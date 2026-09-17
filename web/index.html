@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>CLX · Skill constellation</title>
+    <link rel="stylesheet" href="/app.css" />
+    <script src="/vendor/lucide.js" defer></script>
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <div id="clx-atlas">
+      <canvas
+        aria-label="CLX skill constellation. Choose a family or a skill to explore its actual preset membership."
+      ></canvas>
+      <canvas class="core-motion" aria-hidden="true"></canvas>
+      <div class="nodes"></div>
+      <header class="chrome" hidden>
+        <span class="wordmark">clx</span
+        ><button class="plain" data-action="families">Skills</button
+        ><span class="trail">/ &nbsp; All families</span>
+        <div
+          class="mode-switch"
+          role="group"
+          aria-label="Skill interaction mode"
+        >
+          <button data-mode-view aria-pressed="true">View</button
+          ><button data-mode-edit aria-pressed="false">Edit</button>
+        </div>
+        <div class="actions">
+          <button
+            class="plain preset-picker"
+            data-action="options"
+            aria-label="Choose preset"
+          >
+            Presets</button
+          ><button
+            class="plain"
+            data-action="create"
+            aria-label="Create preset"
+          >
+            +</button
+          ><button
+            class="plain"
+            data-action="settings"
+            aria-label="Edit preset"
+          >
+            <i data-lucide="sliders-horizontal"></i></button
+          ><button class="control" data-action="cancel" hidden>Cancel</button
+          ><button class="control primary save" data-action="save" disabled>
+            Save
+          </button>
+        </div>
+      </header>
+      <div class="edit-summary" aria-live="polite" hidden></div>
+      <div class="foot"></div>
+      <div class="session" aria-live="polite"></div>
+      <div class="explore">
+        <button data-action="back" aria-label="Pan left">←</button
+        ><em>Drag to explore</em
+        ><button data-action="next" aria-label="Pan right">→</button>
+      </div>
+      <div class="popover menu" hidden></div>
+      <section
+        class="popover inspector"
+        hidden
+        aria-label="Skill details"
+      ></section>
+      <div class="notice" aria-live="polite"></div>
+      <div class="load-state" role="status">
+        Reading your CLX configuration…
+      </div>
+      <span class="sr" aria-live="polite" id="clx-announcement"></span>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "stale": {
+    "model": "claude-sonnet-4-6",
+    "skillPlugins": { "workflow@example-skills": { "mode": "subset", "skills": ["work-next", "ghost-skill"] } },
+    "otherPlugins": [],
+    "mcp": ["nonexistent"]
+  },
+  "web": {
+    "model": "claude-opus-4-8",
+    "skillPlugins": {
+      "workflow@example-skills": { "mode": "subset", "skills": ["work-next"] },
+      "superpowers@claude-plugins-official": { "mode": "full" }
+    },
+    "otherPlugins": ["swift-lsp@claude-plugins-official"],
+    "mcp": ["context7"]
+  }
+}

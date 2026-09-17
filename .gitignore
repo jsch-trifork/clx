@@ -1,0 +1,17 @@
+node_modules/
+web/vendor/
+*.tgz
+.env
+.env.*
+!.env.example
+.DS_Store
+/loadout.json
+/presets.json
+/prompts/
+.preset-backups/
+*.bak
+*.bak.*
+*.ui.lock
+/ui-app/
+playwright-report/
+test-results/

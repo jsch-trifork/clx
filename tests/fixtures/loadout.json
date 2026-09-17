@@ -1,0 +1,24 @@
+{
+  "models": [
+    { "id": "claude-sonnet-4-6", "label": "Sonnet 4.6 (fast, default)" },
+    { "id": "claude-opus-4-8", "label": "Opus 4.8" }
+  ],
+  "mcpServers": {
+    "playwright": { "command": "npx", "args": ["-y", "playwright-mcp"], "env": {} },
+    "context7": { "command": "npx", "args": ["-y", "context7-mcp"], "env": {} }
+  },
+  "skillPlugins": [
+    { "id": "workflow@example-skills", "name": "am",
+      "skills": [
+        { "dir": "/fix/am/skills/work-next", "label": "work-next — Navigate the plan" },
+        { "dir": "/fix/am/skills/work-plan", "label": "work-plan — Generate a plan" }
+      ] },
+    { "id": "superpowers@claude-plugins-official", "name": "superpowers",
+      "skills": [
+        { "dir": "/fix/sp/skills/brainstorming", "label": "brainstorming — Explore ideas" }
+      ] }
+  ],
+  "otherPlugins": [
+    { "id": "swift-lsp@claude-plugins-official", "name": "swift-lsp" }
+  ]
+}

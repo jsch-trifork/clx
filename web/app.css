@@ -1,0 +1,948 @@
+@font-face {
+  font-family: Inter;
+  src: url("/vendor/inter.woff2");
+}
+@font-face {
+  font-family: "Cormorant Garamond";
+  src: url("/vendor/cormorant-garamond.woff2");
+}
+#clx-atlas {
+  --ink: #eeeade;
+  --quiet: #a4a0c4;
+  --gold: #f0c17e;
+  --teal: #80c8c4;
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  height: 650px;
+  overflow: clip;
+  background: #19192c;
+  color: var(--ink);
+  font:
+    13px Inter,
+    system-ui,
+    sans-serif;
+  color-scheme: dark;
+}
+#clx-atlas * {
+  box-sizing: border-box;
+}
+#clx-atlas button,
+#clx-atlas select,
+#clx-atlas input,
+#clx-atlas textarea {
+  font: inherit;
+  color: inherit;
+}
+#clx-atlas button {
+  cursor: pointer;
+}
+#clx-atlas button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+#clx-atlas canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+#clx-atlas .nodes {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  mask-image: linear-gradient(to right, #000 0%, #000 86%, transparent 100%);
+}
+#clx-atlas .node {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  margin: -17px;
+  background: none;
+  border: 0;
+  border-radius: 50%;
+  pointer-events: auto;
+  padding: 0;
+}
+#clx-atlas .node span {
+  position: absolute;
+  left: 29px;
+  top: 9px;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--quiet);
+  opacity: 0;
+  text-shadow:
+    0 2px 6px #19192c,
+    0 0 8px #19192c;
+  pointer-events: none;
+}
+#clx-atlas .node:hover span,
+#clx-atlas .node:focus-visible span,
+#clx-atlas .node.named span {
+  opacity: 1;
+}
+#clx-atlas .node.selected span {
+  color: var(--gold);
+}
+#clx-atlas .family {
+  position: absolute;
+  width: 116px;
+  height: 116px;
+  margin: -58px;
+  border: 0;
+  background: none;
+  pointer-events: auto;
+  color: var(--teal);
+}
+#clx-atlas .family .glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+#clx-atlas .family .glyph svg {
+  width: 24px;
+  height: 24px;
+  stroke-width: 1.4;
+}
+#clx-atlas .family .caption {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 13px);
+  transform: translateX(-50%);
+  white-space: nowrap;
+  text-align: center;
+}
+#clx-atlas .family b {
+  display: block;
+  font:
+    500 36px "Cormorant Garamond",
+    Georgia,
+    serif;
+  letter-spacing: 0.21em;
+  color: var(--ink);
+  text-transform: uppercase;
+}
+#clx-atlas .family small {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  letter-spacing: 0.09em;
+  color: var(--quiet);
+}
+#clx-atlas .family.satellite .caption {
+  top: calc(100% - 4px);
+  bottom: auto;
+}
+#clx-atlas .family.satellite b {
+  font-size: 27px;
+}
+#clx-atlas .family.satellite {
+  width: 70px;
+  height: 70px;
+  margin: -35px;
+  color: #b19ade;
+}
+#clx-atlas .chrome {
+  position: absolute;
+  z-index: 5;
+  left: 28px;
+  right: 28px;
+  top: 24px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  pointer-events: none;
+}
+#clx-atlas .chrome > * {
+  pointer-events: auto;
+}
+#clx-atlas .wordmark {
+  font:
+    500 28px "Cormorant Garamond",
+    Georgia,
+    serif;
+  letter-spacing: 0.05em;
+  padding-right: 19px;
+  border-right: 1px solid #6d64843b;
+}
+#clx-atlas .plain {
+  border: 0;
+  background: transparent;
+  color: var(--quiet);
+  padding: 8px 0;
+}
+#clx-atlas .trail {
+  font-size: 12px;
+  color: #a09bbf;
+}
+#clx-atlas .actions {
+  margin-left: auto;
+  display: flex;
+  gap: 18px;
+}
+#clx-atlas .muted {
+  color: var(--quiet);
+}
+#clx-atlas .foot {
+  position: absolute;
+  bottom: 36px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  z-index: 4;
+  white-space: nowrap;
+  max-width: calc(100% - 32px);
+  overflow-x: auto;
+  padding: 4px 0 8px;
+  scrollbar-width: thin;
+  scrollbar-color: #77708f55 transparent;
+}
+#clx-atlas .preset {
+  flex: 0 0 auto;
+  border: 1px solid transparent;
+  border-radius: 24px;
+  background: transparent;
+  color: var(--quiet);
+  padding: 11px 17px;
+  font-size: 12px;
+}
+#clx-atlas .preset:before {
+  content: "•";
+  margin-right: 11px;
+  color: #a39dd3;
+}
+#clx-atlas .preset[aria-pressed="true"] {
+  border-color: var(--gold);
+  color: var(--gold);
+  box-shadow:
+    0 0 18px #eaba6920,
+    inset 0 0 12px #eaba6908;
+}
+#clx-atlas .preset[aria-pressed="true"]:before {
+  color: var(--gold);
+}
+#clx-atlas .explore {
+  position: absolute;
+  bottom: 14px;
+  right: 25px;
+  z-index: 4;
+  display: flex;
+  gap: 13px;
+  align-items: center;
+  color: var(--quiet);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+#clx-atlas .explore em {
+  font-style: normal;
+}
+#clx-atlas .explore button {
+  background: none;
+  border: 0;
+  padding: 6px;
+  color: var(--quiet);
+}
+#clx-atlas .session {
+  position: absolute;
+  left: 29px;
+  bottom: 17px;
+  color: #aaa5bd;
+  font-size: 11px;
+  z-index: 4;
+}
+#clx-atlas .popover {
+  position: absolute;
+  z-index: 9;
+  background: #25243a;
+  border: 1px solid #49465e;
+  border-radius: 12px;
+  box-shadow: 0 16px 70px #08081966;
+  padding: 20px;
+  width: 320px;
+  max-width: calc(100% - 32px);
+  color: var(--ink);
+}
+#clx-atlas .popover[hidden] {
+  display: none;
+}
+#clx-atlas .popover h3 {
+  font:
+    500 23px "Cormorant Garamond",
+    Georgia,
+    serif;
+  margin: 9px 0 12px;
+  overflow-wrap: anywhere;
+}
+#clx-atlas .popover p {
+  font-size: 12px;
+  line-height: 1.65;
+  color: #c0bbcf;
+  max-height: 145px;
+  overflow: auto;
+  margin: 10px 0;
+}
+#clx-atlas .popover .eyebrow {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--quiet);
+}
+#clx-atlas .close {
+  float: right;
+  border: 0;
+  background: none;
+  color: var(--quiet);
+  padding: 0 2px 6px 10px;
+  font-size: 20px;
+}
+#clx-atlas .row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 15px;
+}
+#clx-atlas .control {
+  padding: 9px 12px;
+  border: 1px solid #68617c;
+  border-radius: 6px;
+  background: #302e46;
+  font-size: 12px;
+}
+#clx-atlas .control.primary {
+  color: var(--gold);
+  border-color: #a28357;
+  background: #3a3340;
+}
+#clx-atlas .danger {
+  color: #eaa6ad;
+}
+#clx-atlas .menu {
+  right: 24px;
+  top: 65px;
+  width: 285px;
+}
+#clx-atlas .menu button.item {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-bottom: 1px solid #ffffff08;
+  background: none;
+  padding: 12px 0;
+  color: #e5e0df;
+  font-size: 12px;
+}
+#clx-atlas .menu .item span {
+  color: var(--quiet);
+}
+#clx-atlas label {
+  display: block;
+  font-size: 12px;
+  color: #c6bfd5;
+  margin: 12px 0;
+}
+#clx-atlas input,
+#clx-atlas textarea,
+#clx-atlas select {
+  display: block;
+  width: 100%;
+  background: #1d1c30;
+  border: 1px solid #5b5470;
+  border-radius: 5px;
+  padding: 9px;
+  margin-top: 6px;
+  font-size: 16px;
+}
+#clx-atlas textarea {
+  height: 100px;
+  resize: vertical;
+}
+#clx-atlas .notice {
+  position: absolute;
+  top: 72px;
+  left: 28px;
+  z-index: 8;
+  color: var(--gold);
+  font-size: 12px;
+  background: #25243a;
+  padding: 8px 12px;
+  border-radius: 6px;
+}
+#clx-atlas .notice:empty {
+  display: none;
+}
+#clx-atlas .notice button {
+  border: 0;
+  background: none;
+  color: var(--gold);
+  text-decoration: underline;
+  margin-left: 12px;
+}
+#clx-atlas .sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+@media (min-width: 1100px) {
+  #clx-atlas {
+    height: 720px;
+  }
+}
+@media (max-width: 600px) {
+  #clx-atlas {
+    height: 650px;
+  }
+  #clx-atlas .chrome {
+    left: 20px;
+    right: 20px;
+    gap: 12px;
+  }
+  #clx-atlas .actions {
+    gap: 12px;
+  }
+  #clx-atlas .foot {
+    bottom: 52px;
+    gap: 0;
+  }
+  #clx-atlas .preset {
+    padding: 10px 11px;
+    font-size: 11px;
+  }
+  #clx-atlas .preset:before {
+    margin-right: 6px;
+  }
+  #clx-atlas .session {
+    bottom: 18px;
+    left: 20px;
+  }
+  #clx-atlas .explore {
+    right: 14px;
+    bottom: 12px;
+  }
+  #clx-atlas .explore em {
+    display: none;
+  }
+  #clx-atlas .family b {
+    font-size: 32px;
+  }
+  #clx-atlas .family small {
+    font-size: 11px;
+  }
+  .node {
+    touch-action: none;
+  }
+}
+#clx-atlas:has(.overview-family) .nodes {
+  mask-image: none;
+}
+#clx-atlas .overview-family .caption {
+  top: calc(100% + 10px);
+  bottom: auto;
+}
+#clx-atlas .overview-family b {
+  font-size: 22px;
+  letter-spacing: 0.15em;
+}
+#clx-atlas .overview-family small {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+#clx-atlas .overview-family .glyph svg {
+  width: 19px;
+  height: 19px;
+}
+#clx-atlas .overview-node {
+  width: 22px;
+  height: 22px;
+  margin: -11px;
+}
+#clx-atlas .overview-node:hover,
+#clx-atlas .overview-node:focus-visible {
+  z-index: 4;
+}
+#clx-atlas .overview-node span {
+  background: #1b1b30;
+  padding: 3px 6px;
+  border-radius: 4px;
+  top: -19px;
+  left: 0;
+}
+@media (max-width: 600px) {
+  #clx-atlas .overview-family b {
+    font-size: 14px;
+    letter-spacing: 0.05em;
+  }
+  #clx-atlas .overview-family small {
+    font-size: 11px;
+  }
+  #clx-atlas .overview-family .caption {
+    top: calc(100% + 9px);
+  }
+  #clx-atlas .overview-node {
+    pointer-events: auto;
+  }
+  #clx-atlas .overview-node span {
+    display: none;
+  }
+}
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: #19192c;
+}
+body {
+  font-family: Inter, system-ui, sans-serif;
+}
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+summary:focus-visible {
+  outline: 2px solid #f0c17e;
+  outline-offset: 4px;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+#clx-atlas {
+  height: 100dvh;
+  min-height: 650px;
+}
+#clx-atlas .chrome {
+  top: 24px;
+}
+#clx-atlas .actions {
+  align-items: center;
+  gap: 18px;
+}
+#clx-atlas .actions svg {
+  width: 18px;
+  height: 18px;
+}
+#clx-atlas .preset-picker {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+#clx-atlas .save {
+  font-size: 12px;
+  padding: 7px 15px;
+}
+#clx-atlas .popover {
+  max-height: calc(100% - 170px);
+  overflow: auto;
+}
+#clx-atlas .preset-editor {
+  width: 360px;
+}
+#clx-atlas .popover h3 {
+  font-size: 27px;
+}
+#clx-atlas .popover p {
+  max-height: none;
+  overflow: visible;
+  font-size: 13px;
+}
+#clx-atlas .popover label {
+  font-size: 13px;
+}
+#clx-atlas .check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0;
+}
+#clx-atlas .check input {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  accent-color: #f0c17e;
+}
+#clx-atlas details {
+  margin: 18px 0;
+  border-top: 1px solid #6d64843b;
+  padding-top: 14px;
+}
+#clx-atlas summary {
+  cursor: pointer;
+  font-size: 13px;
+}
+#clx-atlas .preset-list {
+  max-height: 240px;
+  overflow: auto;
+  margin-top: 14px;
+}
+#clx-atlas .item strong {
+  font-weight: 400;
+  overflow-wrap: anywhere;
+  max-width: 210px;
+}
+#clx-atlas .mode-help {
+  font-size: 12px;
+  margin: 0 0 10px;
+}
+#clx-atlas .error,
+#clx-atlas .form-error {
+  color: #f0a1ad;
+}
+#clx-atlas .warning {
+  color: #e8c085;
+}
+#clx-atlas .notice {
+  max-width: calc(100% - 56px);
+  line-height: 1.6;
+  top: 80px;
+}
+#clx-atlas .load-state {
+  position: absolute;
+  z-index: 12;
+  inset: 110px 20px 110px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background: #19192cf7;
+  padding: 24px;
+  text-align: center;
+  line-height: 1.7;
+}
+#clx-atlas .load-state[hidden] {
+  display: none;
+}
+#clx-atlas .load-state h2 {
+  font:
+    400 32px "Cormorant Garamond",
+    Georgia,
+    serif;
+}
+#clx-atlas .load-state p {
+  max-width: 520px;
+}
+#clx-atlas .family .caption {
+  max-width: 360px;
+}
+#clx-atlas .family b {
+  overflow-wrap: anywhere;
+}
+#clx-atlas .family:not(.overview-family) b {
+  font-size: clamp(22px, 3vw, 36px);
+}
+#clx-atlas .foot {
+  max-width: calc(100% - 40px);
+}
+#clx-atlas .preset {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#clx-atlas .menu ul {
+  padding-left: 17px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+#clx-atlas .menu li {
+  margin: 8px 0;
+}
+#clx-atlas .control:hover {
+  background: #46405a;
+}
+#clx-atlas .plain:hover {
+  color: #eeeade;
+}
+@media (max-width: 600px) {
+  #clx-atlas {
+    min-height: 680px;
+  }
+  #clx-atlas .chrome {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  #clx-atlas .chrome .actions {
+    width: 100%;
+    justify-content: flex-end;
+    gap: 20px;
+  }
+  #clx-atlas .preset-picker {
+    margin-right: auto;
+    max-width: 180px;
+  }
+  #clx-atlas .notice {
+    top: 116px;
+    font-size: 11px;
+  }
+  #clx-atlas .popover {
+    max-height: calc(100% - 200px);
+  }
+  #clx-atlas .menu {
+    top: 130px;
+    right: 16px;
+  }
+  #clx-atlas .family .caption {
+    max-width: 190px;
+    white-space: normal;
+  }
+  #clx-atlas .overview-family b {
+    font-size: 14px;
+    letter-spacing: 0.03em;
+  }
+  #clx-atlas .overview-node {
+    width: 28px;
+    height: 28px;
+    margin: -14px;
+  }
+  #clx-atlas .foot {
+    bottom: 56px;
+  }
+  #clx-atlas .preset {
+    max-width: none;
+  }
+  #clx-atlas .session {
+    max-width: 75%;
+    font-size: 11px;
+  }
+  #clx-atlas .save {
+    padding: 6px 12px;
+  }
+}
+#clx-atlas .family .caption {
+  width: 320px;
+}
+#clx-atlas .overview-family .caption {
+  width: 280px;
+}
+#clx-atlas .family small {
+  white-space: nowrap;
+}
+@media (max-width: 600px) {
+  #clx-atlas .family .caption {
+    width: 190px;
+  }
+  #clx-atlas .overview-family .caption {
+    width: 155px;
+    max-width: 155px;
+  }
+  #clx-atlas .overview-family b {
+    overflow-wrap: normal;
+    white-space: nowrap;
+    font-size: 13px;
+  }
+}
+
+#clx-atlas .chrome[hidden] {
+  display: none;
+}
+#clx-atlas .core-motion {
+  pointer-events: none;
+  z-index: 1;
+}
+#clx-atlas .nodes {
+  z-index: 2;
+}
+#clx-atlas .node {
+  width: 44px;
+  height: 44px;
+  margin: -22px;
+}
+#clx-atlas .node:not(.overview-node) span {
+  opacity: 1;
+  font-size: 13px;
+  line-height: 18px;
+  padding: 3px 7px;
+  pointer-events: auto;
+  white-space: nowrap;
+  color: #c9c4da;
+  background: #1c1b2eeb;
+  border-radius: 3px;
+  text-shadow: none;
+}
+#clx-atlas .node:not(.overview-node)[aria-pressed="true"] span {
+  color: #f0c17e;
+}
+#clx-atlas .mode-switch {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid #59516d;
+  border-radius: 18px;
+  margin-left: 12px;
+}
+#clx-atlas .mode-switch button {
+  border: 0;
+  border-radius: 14px;
+  background: none;
+  color: #aaa3bf;
+  font-size: 12px;
+  padding: 6px 12px;
+}
+#clx-atlas .mode-switch button[aria-pressed="true"] {
+  background: #3d3650;
+  color: #f3d2a0;
+}
+#clx-atlas .overview-family .glyph svg {
+  width: 26px;
+  height: 26px;
+}
+#clx-atlas .family:not(.overview-family) .glyph svg {
+  width: 30px;
+  height: 30px;
+}
+#clx-atlas .overview-node {
+  width: 30px;
+  height: 30px;
+  margin: -15px;
+}
+#clx-atlas.editing .node:hover {
+  box-shadow: 0 0 0 1px #c3a77670;
+}
+@media (max-width: 600px) {
+  #clx-atlas .mode-switch {
+    margin-left: auto;
+  }
+  #clx-atlas .mode-switch button {
+    font-size: 11px;
+    padding: 5px 8px;
+  }
+  #clx-atlas .chrome {
+    gap: 8px;
+  }
+  #clx-atlas .overview-family .glyph svg {
+    width: 24px;
+    height: 24px;
+  }
+  #clx-atlas .node:not(.overview-node) span {
+    font-size: 13px;
+  }
+}
+
+#clx-atlas .nodes {
+  mask-image: none;
+}
+
+#clx-atlas .node[data-change="added"]::after,
+#clx-atlas .node[data-change="removed"]::after {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #1b1c30;
+  border: 1px solid currentColor;
+  font: bold 13px/14px sans-serif;
+  text-align: center;
+  pointer-events: none;
+}
+#clx-atlas .node[data-change="added"]::after {
+  content: "+";
+  color: #91ddc3;
+}
+#clx-atlas .node[data-change="removed"]::after {
+  content: "−";
+  color: #f3a4b1;
+}
+#clx-atlas .edit-summary {
+  position: absolute;
+  bottom: 98px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 32px);
+  text-align: center;
+  color: #d9d2e5;
+  font-size: 12px;
+  z-index: 4;
+}
+#clx-atlas [hidden] {
+  display: none !important;
+}
+
+/* Motion follows navigation, selection, and controls; the core keeps its own clock. */
+@media (prefers-reduced-motion: no-preference) {
+  #clx-atlas .control,
+  #clx-atlas .plain,
+  #clx-atlas .preset,
+  #clx-atlas .mode-switch button {
+    transition:
+      color 160ms ease,
+      background-color 160ms ease,
+      border-color 180ms ease,
+      box-shadow 180ms ease,
+      opacity 160ms ease;
+  }
+  #clx-atlas .family .glyph {
+    display: inline-flex;
+    transition: transform 260ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  #clx-atlas .family:hover .glyph,
+  #clx-atlas .family:focus-visible .glyph {
+    transform: scale(1.16) rotate(-5deg);
+  }
+  #clx-atlas .node span {
+    transition:
+      color 180ms ease,
+      opacity 160ms ease;
+  }
+  #clx-atlas .inspector:not(.skill-details):not([hidden]) {
+    animation: clx-panel-enter 260ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  #clx-atlas .node[data-change="added"]::after,
+  #clx-atlas .node[data-change="removed"]::after {
+    animation: clx-change-enter 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes clx-panel-enter {
+    from {
+      opacity: 0;
+      translate: 10px 0;
+    }
+    to {
+      opacity: 1;
+      translate: 0 0;
+    }
+  }
+  @keyframes clx-change-enter {
+    from {
+      opacity: 0;
+      scale: 0.55;
+    }
+    to {
+      opacity: 1;
+      scale: 1;
+    }
+  }
+}
+
+#clx-atlas .skill-details {
+  border-color: #82758f;
+}
+@media (max-width: 600px) {
+  #clx-atlas .skill-details {
+    border-radius: 16px 16px 10px 10px;
+  }
+  #clx-atlas .skill-details::before {
+    content: "";
+    display: block;
+    width: 32px;
+    height: 3px;
+    margin: -5px auto 14px;
+    border-radius: 2px;
+    background: #81788e;
+  }
+}

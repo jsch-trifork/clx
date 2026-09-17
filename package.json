@@ -1,0 +1,46 @@
+{
+  "name": "clx-constellation",
+  "version": "0.1.0",
+  "description": "A local constellation UI and terminal launcher for Claude Code skill presets",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "clx": "bin/clx.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "web",
+    "clx.zsh",
+    "bootstrap.zsh",
+    "README.md",
+    "scripts"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "node bin/clx.mjs ui",
+    "test": "node --test tests/ui-*.test.mjs",
+    "test:shell": "zsh tests/run.zsh",
+    "prepack": "npm run build",
+    "test:browser": "node tests/browser.mjs",
+    "format:check": "prettier --check src bin web scripts tests/ui-*.test.mjs tests/browser.mjs",
+    "prepare": "npm run build"
+  },
+  "dependencies": {
+    "@fontsource/cormorant-garamond": "^5.3.0",
+    "@fontsource/inter": "^5.3.0",
+    "lucide": "^1.47.0",
+    "yaml": "^2.9.1"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0",
+    "prettier": "^3.9.7"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jsch-trifork/clx.git"
+  }
+}
