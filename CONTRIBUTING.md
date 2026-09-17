@@ -7,3 +7,9 @@ Before a release, run the Node, shell, browser and formatting checks. Build with
 Publish the tested archive as a GitHub release asset. Do not include `node_modules`, generated local configuration, old private Git history, or developer notes. Third-party font/icon licenses must remain in the archive.
 
 When editing the UI, preserve skill selection semantics, keyboard navigation, reduced-motion behavior, and the distinction between saved selections and unsaved changes. Include a focused browser check for changed interactions.
+
+## Pull requests
+
+All changes to `main` must go through a pull request. Direct pushes, force pushes, and deletion of `main` are blocked, including for the repository owner. All four Linux/macOS CI checks must pass and review conversations must be resolved.
+
+The repository owner reviews every file through `.github/CODEOWNERS`. New commits dismiss earlier approvals. The owner has a PR-only review bypass for self-authored PRs, since GitHub does not permit authors to approve their own work. This exception does not bypass CI or permit direct pushes.
