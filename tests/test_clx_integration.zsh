@@ -36,6 +36,8 @@
   cat > "$stub/gum" <<EOF
 #!/bin/zsh
 emulate -L zsh
+# Read piped choices like gum does; avoid producer SIGPIPE under pipefail.
+[[ "\$1" == choose ]] && cat >/dev/null
 local header="" selected="" a
 while (( \$# )); do
   case "\$1" in
@@ -131,6 +133,8 @@ EOF
   cat > "$stub/gum" <<EOF
 #!/bin/zsh
 emulate -L zsh
+# Read piped choices like gum does; avoid producer SIGPIPE under pipefail.
+[[ "\$1" == choose ]] && cat >/dev/null
 local header=""
 while (( \$# )); do case "\$1" in --header) header="\$2"; shift 2;; --selected) shift 2;; *) shift;; esac; done
 case "\$header" in
@@ -153,6 +157,8 @@ EOF
   cat > "$stub/gum" <<EOF
 #!/bin/zsh
 emulate -L zsh
+# Read piped choices like gum does; avoid producer SIGPIPE under pipefail.
+[[ "\$1" == choose ]] && cat >/dev/null
 local header="" selected="" cmd="\$1"
 while (( \$# )); do case "\$1" in --header) header="\$2"; shift 2;; --selected) selected="\$2"; shift 2;; --placeholder) shift 2;; *) shift;; esac; done
 case "\$cmd" in
@@ -178,6 +184,8 @@ EOF
   cat > "$stub/gum" <<EOF
 #!/bin/zsh
 emulate -L zsh
+# Read piped choices like gum does; avoid producer SIGPIPE under pipefail.
+[[ "\$1" == choose ]] && cat >/dev/null
 local header="" cmd="\$1"
 while (( \$# )); do case "\$1" in --header) header="\$2"; shift 2;; --selected) shift 2;; --placeholder) shift 2;; *) shift;; esac; done
 case "\$cmd" in
@@ -207,6 +215,8 @@ EOF
   cat > "$stub/gum" <<EOF
 #!/bin/zsh
 emulate -L zsh
+# Read piped choices like gum does; avoid producer SIGPIPE under pipefail.
+[[ "\$1" == choose ]] && cat >/dev/null
 local orig_args=("\$@") header="" selected="" cmd="\$1"
 while (( \$# )); do case "\$1" in --header) header="\$2"; shift 2;; --selected) selected="\$2"; shift 2;; --placeholder) shift 2;; *) shift;; esac; done
 [[ -n "\$selected" ]] && { print -r -- "\$selected"; exit 0; }
@@ -281,6 +291,8 @@ EOF
   cat > "$stub/gum" <<EOF
 #!/bin/zsh
 emulate -L zsh
+# Read piped choices like gum does; avoid producer SIGPIPE under pipefail.
+[[ "\$1" == choose ]] && cat >/dev/null
 local header="" selected="" cmd="\$1"
 while (( \$# )); do case "\$1" in --header) header="\$2"; shift 2;; --selected) selected="\$2"; shift 2;; *) shift;; esac; done
 [[ "\$cmd" == confirm ]] && exit 1
@@ -331,6 +343,8 @@ EOF
   cat > "$stub/gum" <<EOF
 #!/bin/zsh
 emulate -L zsh
+# Read piped choices like gum does; avoid producer SIGPIPE under pipefail.
+[[ "\$1" == choose ]] && cat >/dev/null
 local header="" selected="" cmd="\$1"
 while (( \$# )); do case "\$1" in --header) header="\$2"; shift 2;; --selected) selected="\$2"; shift 2;; --placeholder) shift 2;; *) shift;; esac; done
 case "\$cmd" in
@@ -384,6 +398,8 @@ EOF
   cat > "$stub/gum" <<'EOF'
 #!/bin/zsh
 emulate -L zsh
+# Read piped choices like gum does; avoid producer SIGPIPE under pipefail.
+[[ "$1" == choose ]] && cat >/dev/null
 local cmd="$1" selected=""
 while (( $# )); do case "$1" in --selected) selected="$2"; shift 2;; *) shift;; esac; done
 [[ "$cmd" == confirm ]] && exit 1
@@ -425,6 +441,8 @@ EOF
   cat > "$stub/gum" <<'EOF'
 #!/bin/zsh
 emulate -L zsh
+# Read piped choices like gum does; avoid producer SIGPIPE under pipefail.
+[[ "$1" == choose ]] && cat >/dev/null
 local cmd="$1" selected=""
 while (( $# )); do case "$1" in --selected) selected="$2"; shift 2;; *) shift;; esac; done
 [[ "$cmd" == confirm ]] && exit 1
@@ -457,6 +475,8 @@ EOF
   cat > "$stub/gum" <<EOF
 #!/bin/zsh
 emulate -L zsh
+# Read piped choices like gum does; avoid producer SIGPIPE under pipefail.
+[[ "\$1" == choose ]] && cat >/dev/null
 local cmd="\$1"; shift
 local -a pos
 while (( \$# )); do

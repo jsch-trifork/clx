@@ -80,7 +80,7 @@ _clx_preset_prompt() { jq -r --arg n "$2" '.[$n].prompt // empty' "$1"; }
 # Prompt library: one .md per prompt under prompts/, referenced by name from a
 # preset. Keeping the text in files rather than inline in presets.json means a
 # prompt can be shared between presets, edited in an editor, and versioned --
-# presets.json is gitignored, prompts/ is not.
+# User preset and prompt files stay outside the distributed source.
 _clx_prompt_names() {
   local dir="$1" f
   [[ -d "$dir" ]] || return 0

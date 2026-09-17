@@ -54,6 +54,8 @@ EOF
   cat > "$stub/gum" <<'EOF'
 #!/bin/zsh
 emulate -L zsh
+# Read piped choices like gum does; avoid producer SIGPIPE under pipefail.
+[[ "$1" == choose ]] && cat >/dev/null
 local header=""
 while (( $# )); do case "$1" in --header) header="$2"; shift 2;; --selected) shift 2;; *) shift;; esac; done
 case "$header" in
@@ -62,7 +64,7 @@ case "$header" in
 esac
 exit 0
 EOF
-  sed -i '' "s/PRESET_NAME/withp/" "$stub/gum"; chmod +x "$stub/gum"
+  sed -i.bak "s/PRESET_NAME/withp/" "$stub/gum"; chmod +x "$stub/gum"
   ( PATH="$stub:$PATH"; CLX_CATALOG="$cat" CLX_PRESETS="$pf" CLX_PROMPTS_DIR="$pdir" clx >/dev/null 2>&1 )
   assert_eq "prompt_flag_passed" \
     "$([[ "$(<"$out/argv")" == *"--append-system-prompt-file"* ]] && echo yes)" "yes"
@@ -71,7 +73,7 @@ EOF
 
   # A preset with no prompt must not pass the flag at all.
   rm -f "$out/argv" "$out/prompt.txt"
-  sed -i '' "s/withp/nop/" "$stub/gum"
+  sed -i.bak "s/withp/nop/" "$stub/gum"
   ( PATH="$stub:$PATH"; CLX_CATALOG="$cat" CLX_PRESETS="$pf" CLX_PROMPTS_DIR="$pdir" clx >/dev/null 2>&1 )
   assert_eq "prompt_absent_no_flag" \
     "$([[ "$(<"$out/argv")" == *"--append-system-prompt-file"* ]] && echo yes || echo no)" "no"
@@ -96,6 +98,8 @@ EOF
   cat > "$stub/gum" <<'EOF'
 #!/bin/zsh
 emulate -L zsh
+# Read piped choices like gum does; avoid producer SIGPIPE under pipefail.
+[[ "$1" == choose ]] && cat >/dev/null
 local header="" cmd="$1"
 while (( $# )); do case "$1" in --header) header="$2"; shift 2;; --selected) shift 2;; --placeholder) shift 2;; *) shift;; esac; done
 case "$cmd" in
@@ -121,7 +125,7 @@ EOF
   assert_eq "prompt_saved_name" "$(jq -r '.p1.prompt' "$pf")" "pv"
 
   # Choosing "— none —" removes it again.
-  sed -i '' 's/print -r -- "pv  ·  Always show two directions."/print -r -- "— none —"/' "$stub/gum"
+  sed -i.bak 's/print -r -- "pv  ·  Always show two directions."/print -r -- "— none —"/' "$stub/gum"
   ( PATH="$stub:$PATH"; CLX_CATALOG="$cat" CLX_PRESETS="$pf" CLX_PROMPTS_DIR="$pdir" clx >/dev/null 2>&1 )
   assert_eq "prompt_cleared" "$(jq -r '.p1.prompt // "none"' "$pf")" "none"
 
@@ -153,9 +157,11 @@ EOF
   cat > "$stub/gum" <<'EOF'
 #!/bin/zsh
 emulate -L zsh
+# Read piped choices like gum does; avoid producer SIGPIPE under pipefail.
+[[ "$1" == choose ]] && cat >/dev/null
 local resp
 resp=$(head -1 "$CLX_TEST_QUEUE")
-sed -i '' '1d' "$CLX_TEST_QUEUE"
+sed -i.bak '1d' "$CLX_TEST_QUEUE"
 case "$resp" in
   __OK__) exit 0 ;;
   __NO__) exit 1 ;;
