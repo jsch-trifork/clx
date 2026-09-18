@@ -13,9 +13,25 @@ out="${out:-$HOME/.claude/clx/loadout.json}"
 if [[ -f "$out" && "$force" != "--force" ]]; then
   print -ru2 -- "bootstrap: $out exists (pass --force to overwrite)"; return 1 2>/dev/null || exit 1
 fi
-local settings="$HOME/.claude/settings.json" cfg="$HOME/.claude.json"
-local cache="$HOME/.claude/plugins/cache"
-local installed="$HOME/.claude/plugins/installed_plugins.json"
+local claude_dir="${CLAUDE_CONFIG_DIR:-}"
+[[ -z "$claude_dir" && -f "$out" ]] && claude_dir=$(jq -r '.claudeConfigDir // empty' "$out")
+if [[ -n "$claude_dir" ]]; then
+  [[ "$claude_dir" == '~/'* ]] && claude_dir="$HOME/${claude_dir#\~/}"
+  [[ -d "$claude_dir" || "$claude_dir" == "$HOME/.claude" ]] || { print -ru2 -- "Claude configuration folder does not exist: $claude_dir"; exit 1; }
+  claude_dir="${claude_dir:a}"
+fi
+local source_dir="${claude_dir:-$HOME/.claude}"
+local settings="$source_dir/settings.json" cfg="$HOME/.claude.json"
+[[ -n "$claude_dir" && "$claude_dir" != "$HOME/.claude" ]] && cfg="$claude_dir/.claude.json"
+local cache="$source_dir/plugins/cache"
+local installed="$source_dir/plugins/installed_plugins.json"
+
+# Reject malformed configuration before replacing an existing catalog.
+for config_file in "$settings" "$cfg"; do
+  if [[ -f "$config_file" ]]; then
+    jq -e 'type == "object"' "$config_file" >/dev/null || { print -ru2 -- "Invalid Claude configuration: $config_file"; exit 1; }
+  fi
+done
 
 # mcpServers: global + per-project, merged.
 local mcp='{}'
@@ -79,10 +95,13 @@ local models='[
   {"id":"haiku","label":"Haiku"}
 ]'
 mkdir -p "${out:h}"
-jq -n --argjson models "$models" --argjson mcp "$mcp" --argjson sp "$skill_plugins" --argjson op "$other_plugins" '{
+local temp_out=$(mktemp "${out}.tmp.XXXXXX")
+jq -n --arg claudeConfigDir "$source_dir" --argjson models "$models" --argjson mcp "$mcp" --argjson sp "$skill_plugins" --argjson op "$other_plugins" '{
+  claudeConfigDir: (if $claudeConfigDir == "" then null else $claudeConfigDir end),
   models: $models,
   mcpServers: $mcp,
   skillPlugins: $sp,
   otherPlugins: $op
-}' > "$out"
+}' > "$temp_out"
+mv "$temp_out" "$out"
 print -r -- "bootstrap: wrote $out"

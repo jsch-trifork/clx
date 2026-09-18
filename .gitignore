@@ -15,3 +15,7 @@ web/vendor/
 /ui-app/
 playwright-report/
 test-results/
+
+/profiles.json
+/profile-catalogs/
+*.json.lock

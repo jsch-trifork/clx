@@ -17,7 +17,7 @@ try {
   await mkdir(home);
   const { stdout: files } = await exec("tar", ["-tzf", archive]);
   assert(
-    !/package\/(?:presets\.json|loadout\.json|prompts\/|lab\/|docs\/|\.git\/)/m.test(
+    !/package\/(?:presets\.json|loadout\.json|profiles\.json|profile-catalogs\/|prompts\/|lab\/|docs\/|\.git\/)/m.test(
       files,
     ),
   );

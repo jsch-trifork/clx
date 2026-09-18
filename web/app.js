@@ -31,6 +31,7 @@ import { createCorePainter } from "./core.js";
   const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
   let baseEdges = [];
   let namingFirstPreset = false;
+  let profileChosen = false;
   let editMode = false,
     labelsRight = 0,
     motionFrame = 0,
@@ -1209,8 +1210,17 @@ import { createCorePainter } from "./core.js";
         Authorization: "Bearer " + (token || ""),
         ...(body ? { "Content-Type": "application/json" } : {}),
       },
-      ...(body ? { body: JSON.stringify(body) } : {}),
-      signal: AbortSignal.timeout(15000),
+      ...(body
+        ? {
+            body: JSON.stringify({
+              ...body,
+              profileId: DATA.profile?.activeId,
+            }),
+          }
+        : {}),
+      signal: AbortSignal.timeout(
+        ["/api/setup", "/api/profiles"].includes(path) ? 45000 : 15000,
+      ),
     });
     const result = await response.json();
     if (!response.ok) {
@@ -1218,6 +1228,7 @@ import { createCorePainter } from "./core.js";
         result.error || "CLX could not complete this request.",
       );
       error.status = response.status;
+      error.missing = result.missing;
       throw error;
     }
     return result;
@@ -1284,16 +1295,23 @@ import { createCorePainter } from "./core.js";
     }
     welcome.innerHTML = hasSkills
       ? `<h2>Create your first preset</h2><p>Choose the skills you want Claude to use for a particular kind of work.</p><button class="control primary" data-first-create>Create a preset</button><small>Name it. Choose skills. Save it.</small>`
-      : `<h2>Build your skill constellation</h2><p>No skill plugins found yet. Install a skill-bearing plugin in Claude Code, then run this in your terminal:</p><code>clx init --force</code><div class="row"><button class="control primary" data-first-reload>Reload skills</button><button class="plain" data-first-create>Create a preset without skills</button></div><small>You can save a model-only preset now and add skills later.</small>`;
+      : `<h2>Build your skill constellation</h2><p>No skill plugins found yet. Install a skill-bearing plugin in Claude Code, then run this in your terminal:</p><code>clx init --force</code><div class="row"><button class="control primary" data-choose-folder>Choose Claude folder</button><button class="plain" data-first-reload>Reload skills</button><button class="plain" data-first-create>Create a preset without skills</button></div><small>You can save a model-only preset now and add skills later.</small>`;
     welcome.querySelector("[data-first-create]").onclick = () => {
       namingFirstPreset = true;
       renderWelcome();
       welcome.querySelector("input").focus();
     };
+    const chooseFolder = welcome.querySelector("[data-choose-folder]");
+    if (chooseFolder) chooseFolder.onclick = () => showSetup();
     const reload = welcome.querySelector("[data-first-reload]");
     if (reload) reload.onclick = () => load();
   }
   function renderChrome() {
+    const profileButton = root.querySelector("[data-action=profiles]");
+    profileButton.hidden = !DATA.profile?.profiles?.length;
+    profileButton.textContent =
+      (DATA.profile?.profiles.find((p) => p.id === DATA.profile.activeId)
+        ?.name || "Choose profile") + " ▾";
     renderWelcome();
     root.querySelector("[data-action=cancel]").hidden = !editMode && !dirty;
     const changes = DATA.families.flatMap((f) => f.skills).map(skillChange);
@@ -1356,7 +1374,10 @@ import { createCorePainter } from "./core.js";
       if (await savePreset()) continuation();
     };
     menu.querySelector("[data-discard]").onclick = () => {
-      dirty = false;
+      usePreset();
+      refresh();
+      menu.hidden = true;
+      notice.textContent = "";
       continuation();
     };
     menu.querySelector("[data-stay]").onclick = () => {
@@ -1378,7 +1399,7 @@ import { createCorePainter } from "./core.js";
               "</span></button>",
           )
           .join("") +
-        '</div><button class="item" data-new>+ New preset</button><button class="item" data-edit>Edit current preset</button><button class="item" data-reload>Reload from disk</button>' +
+        '</div><button class="item" data-new>+ New preset</button><button class="item" data-edit>Edit current preset</button><button class="item" data-reload>Reload from disk</button><button class="item" data-claude-folder>Claude configuration folder</button>' +
         (originalName
           ? '<button class="item" data-launch ' +
             (dirty ? "disabled" : "") +
@@ -1398,6 +1419,8 @@ import { createCorePainter } from "./core.js";
     menu.querySelector("[data-edit]").onclick = presetEditor;
     menu.querySelector("[data-reload]").onclick = () =>
       leaveDraft(() => load());
+    menu.querySelector("[data-claude-folder]").onclick = () =>
+      leaveDraft(() => showSetup());
     if (menu.querySelector("[data-launch]"))
       menu.querySelector("[data-launch]").onclick = launch;
     if (menu.querySelector("[data-warnings]"))
@@ -1647,15 +1670,171 @@ import { createCorePainter } from "./core.js";
       }
     };
   }
-  async function launch() {
+  async function launch(allowMissing = false) {
     if (dirty) return;
     try {
-      await api("/api/launch", { name: originalName });
+      await api("/api/launch", {
+        name: originalName,
+        allowMissing: allowMissing === true,
+      });
       menu.hidden = true;
       announce("Session launched. Continue in your terminal.");
     } catch (error) {
-      showError(error);
+      if (error.missing) {
+        openMenu(
+          `<h3>Unavailable in this profile</h3><p>The saved preset will stay unchanged.</p><ul>${error.missing.map((item) => "<li>" + esc(item) + "</li>").join("")}</ul><button class="control" data-other-profile>Choose another profile</button><button class="control" data-continue-missing>Continue without these</button><button class="plain" data-cancel-missing>Cancel</button>`,
+        );
+        menu.querySelector("[data-other-profile]").onclick = () =>
+          showProfiles();
+        menu.querySelector("[data-continue-missing]").onclick = () =>
+          launch(true);
+        menu.querySelector("[data-cancel-missing]").onclick = () => {
+          menu.hidden = true;
+        };
+      } else showError(error);
     }
+  }
+  async function showProfiles() {
+    const host = root.querySelector(".load-state");
+    host.hidden = false;
+    menu.hidden = true;
+    host.innerHTML =
+      '<h2>Choose your Claude profile</h2><p>Your presets are shared. The profile controls which Claude installation and skills are available.</p><div data-profile-list></div><p role="alert" data-profile-error></p><div class="row"><button class="control" data-add-profile>Add profile</button><button class="plain" data-close-profiles>Back</button></div>';
+    host.querySelector("[data-close-profiles]").onclick = () => {
+      if (!draft) {
+        load();
+        return;
+      }
+      host.hidden = true;
+      profileChosen = true;
+    };
+    try {
+      const state = await api("/api/profiles");
+      host.querySelector("[data-profile-list]").innerHTML = state.profiles
+        .map(
+          (p) =>
+            `<div class="profile-row"><button class="control" data-use-profile="${esc(p.id)}">${esc(p.name)}${p.id === state.activeId ? " · current" : ""}</button><button class="plain" data-edit-profile="${esc(p.id)}" aria-label="Edit ${esc(p.name)}">Edit</button></div>`,
+        )
+        .join("");
+      host.querySelectorAll("[data-use-profile]").forEach(
+        (button) =>
+          (button.onclick = async () => {
+            host.querySelectorAll("button").forEach((b) => (b.disabled = true));
+            try {
+              await api("/api/profiles", {
+                operation: "select",
+                id: button.dataset.useProfile,
+              });
+              profileChosen = true;
+              await load();
+            } catch (e) {
+              host.querySelector("[data-profile-error]").textContent =
+                e.message;
+              host
+                .querySelectorAll("button")
+                .forEach((b) => (b.disabled = false));
+            }
+          }),
+      );
+      host.querySelectorAll("[data-edit-profile]").forEach(
+        (button) =>
+          (button.onclick = () =>
+            editProfile(
+              state,
+              state.profiles.find((p) => p.id === button.dataset.editProfile),
+            )),
+      );
+      host.querySelector("[data-add-profile]").onclick = () =>
+        editProfile(state);
+      host.querySelector("[data-use-profile]")?.focus();
+    } catch (e) {
+      host.querySelector("[data-profile-error]").textContent = e.message;
+    }
+  }
+  function editProfile(state, profile) {
+    const host = root.querySelector(".load-state");
+    host.innerHTML = `<h2>${profile ? "Edit Claude profile" : "Add Claude profile"}</h2><form data-profile-form>
+      <label for="profile-name">Profile name</label><input id="profile-name" required maxlength="80" value="${esc(profile?.name || "")}" placeholder="For example, Customer A">
+      <label for="profile-directory">Claude configuration folder</label><input id="profile-directory" required value="${esc(profile?.directory || "")}" placeholder="/path/to/customer/claude" autocomplete="off" spellcheck="false">
+      <label for="profile-executable">Claude executable</label><input id="profile-executable" required value="${esc(profile?.executable || "claude")}" autocomplete="off" spellcheck="false">
+      <p>Use claude from PATH, or the full executable path. Presets are shared across all profiles.</p><p role="alert" data-profile-error></p>
+      <div class="row"><button class="control primary" type="submit">Save profile</button><button class="plain" type="button" data-profile-back>Cancel</button>${profile && profile.id !== state.activeId && state.profiles.length > 1 ? '<button class="plain" type="button" data-delete-profile>Delete profile</button>' : ""}</div></form>`;
+    host.querySelector("[data-profile-back]").onclick = showProfiles;
+    async function save(operation) {
+      host.querySelectorAll("button").forEach((b) => (b.disabled = true));
+      try {
+        await api("/api/profiles", {
+          operation,
+          id: profile?.id,
+          name: host.querySelector("#profile-name").value,
+          directory: host.querySelector("#profile-directory").value,
+          executable: host.querySelector("#profile-executable").value,
+          revision: state.revision,
+        });
+        await load();
+        await showProfiles();
+      } catch (e) {
+        host.querySelector("[data-profile-error]").textContent = e.message;
+        host.querySelectorAll("button").forEach((b) => (b.disabled = false));
+      }
+    }
+    host.querySelector("form").onsubmit = (e) => {
+      e.preventDefault();
+      save(profile ? "update" : "create");
+    };
+    const remove = host.querySelector("[data-delete-profile]");
+    if (remove)
+      remove.onclick = () => {
+        remove.textContent = "Confirm delete profile";
+        remove.onclick = () => save("delete");
+      };
+    host.querySelector("input").focus();
+  }
+  async function showSetup(problem = "") {
+    const host = root.querySelector(".load-state");
+    host.hidden = false;
+    host.innerHTML = `<h2>Connect your Claude configuration</h2><p>Choose the folder containing <code>settings.json</code> and <code>plugins</code>. This is your Claude profile, not the Claude executable.</p>
+      <form data-setup-form><label for="claude-config-folder">Claude configuration folder</label><input id="claude-config-folder" name="directory" placeholder="~/.claude" required autocomplete="off" spellcheck="false" aria-describedby="claude-folder-help">
+      <p id="claude-folder-help">Paste a folder path. CLX remembers it for skill discovery and launched sessions. Your presets are kept.</p>
+      <p data-setup-error role="alert"></p><div class="row"><button class="control primary" type="submit" disabled>Scan this folder</button><button class="plain" type="button" data-setup-cancel>${draft ? "Cancel" : "Try again"}</button></div></form>`;
+    const form = host.querySelector("form"),
+      input = host.querySelector("input"),
+      submit = host.querySelector('[type="submit"]'),
+      error = host.querySelector("[data-setup-error]");
+    error.textContent = problem;
+    host.querySelector("[data-setup-cancel]").onclick = () => {
+      if (draft) host.hidden = true;
+      else load();
+    };
+    try {
+      input.value = (await api("/api/setup")).directory;
+      submit.disabled = false;
+    } catch (e) {
+      error.textContent = e.message;
+    }
+    input.focus();
+    input.oninput = () => {
+      error.textContent = "";
+    };
+    form.onsubmit = async (event) => {
+      event.preventDefault();
+      submit.disabled = true;
+      input.disabled = true;
+      host.querySelector("[data-setup-cancel]").disabled = true;
+      submit.textContent = "Scanning…";
+      error.textContent = "";
+      try {
+        await api("/api/setup", { directory: input.value });
+        await load();
+      } catch (e) {
+        error.textContent = e.message;
+        submit.disabled = false;
+        input.disabled = false;
+        host.querySelector("[data-setup-cancel]").disabled = false;
+        submit.textContent = "Scan this folder";
+        input.focus();
+      }
+    };
   }
   async function load() {
     const loading = root.querySelector(".load-state");
@@ -1697,12 +1876,27 @@ import { createCorePainter } from "./core.js";
         notice.querySelector("button").onclick = presetMenu;
       }
       root.querySelector(".chrome").hidden = false;
+      if (
+        !profileChosen &&
+        !DATA.profile?.chosen &&
+        DATA.profile?.profiles.length > 1
+      )
+        await showProfiles();
     } catch (error) {
-      loading.innerHTML =
-        "<h2>CLX needs your attention</h2><p>" +
-        esc(error.message) +
-        '</p><p>New installation? Run <code>clx init</code> in your terminal.</p><button class="control">Try again</button>';
-      loading.querySelector("button").onclick = load;
+      try {
+        const profiles = await api("/api/profiles");
+        if (
+          profiles.profiles.length > 1 &&
+          !profileChosen &&
+          !profiles.chosen
+        ) {
+          await showProfiles();
+          return;
+        }
+      } catch {
+        /* The setup view retains the original error. */
+      }
+      await showSetup(error.message);
     }
   }
   window.addEventListener("beforeunload", (e) => {
@@ -1715,6 +1909,8 @@ import { createCorePainter } from "./core.js";
     resize();
     if (overview && draft) buildOverview();
   }).observe(root);
+  root.querySelector("[data-action=profiles]").onclick = () =>
+    leaveDraft(showProfiles);
   root.querySelector("[data-mode-view]").onclick = () => setEditMode(false);
   root.querySelector("[data-mode-edit]").onclick = () => setEditMode(true);
   reducedMotion.addEventListener("change", () => {

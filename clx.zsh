@@ -235,7 +235,7 @@ _clx_catalog_missing_dirs() {
 _clx_preflight() {
   local catalog="$1" c
   local -a missing
-  for c in gum jq claude; do command -v "$c" >/dev/null 2>&1 || missing+=("$c"); done
+  for c in gum jq "${CLX_CLAUDE_BIN:-claude}"; do command -v "$c" >/dev/null 2>&1 || missing+=("$c"); done
   if (( ${#missing[@]} )); then
     print -ru2 -- "clx: missing dependencies: ${missing[*]}  (e.g. brew install gum jq)"
     return 1
@@ -320,7 +320,7 @@ clx() {
   setopt local_options pipefail
   local clx_dir="${CLX_DIR:-$HOME/.claude/clx}"
   local catalog="${CLX_CATALOG:-$clx_dir/loadout.json}"
-  local settings="$HOME/.claude/settings.json"
+  local settings="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
   local presets_file="${CLX_PRESETS:-$clx_dir/presets.json}"
   local prompts_dir="${CLX_PROMPTS_DIR:-$clx_dir/prompts}"
   if [[ "$1" == "ui" || "$1" == "init" ]]; then
@@ -331,6 +331,10 @@ clx() {
     command node "$ui_entry" "$ui_command" "$@"
     return $?
   fi
+  if [[ -z "$CLX_PROFILE_READY" && -f "$clx_dir/profiles.json" && "$1" != "prompts" ]]; then
+    command node "${CLX_UI_BIN:-$_CLX_SOURCE_DIR/bin/clx.mjs}" "$@"
+    return $?
+  fi
   # Managing prompts needs neither catalog nor plugins, so route before preflight.
   if [[ "$1" == "prompts" ]]; then
     _clx_prompts_manage "$prompts_dir" "$presets_file"
@@ -338,6 +342,13 @@ clx() {
   fi
 
   _clx_preflight "$catalog" || return 1
+  local chosen_claude_dir="$(jq -r '.claudeConfigDir // empty' "$catalog")"
+  chosen_claude_dir="${chosen_claude_dir:-$CLAUDE_CONFIG_DIR}"
+  if [[ -n "$chosen_claude_dir" ]]; then
+    local -x CLAUDE_CONFIG_DIR="$chosen_claude_dir"
+    settings="$CLAUDE_CONFIG_DIR/settings.json"
+    [[ "$CLAUDE_CONFIG_DIR" == "$HOME/.claude" ]] && unset CLAUDE_CONFIG_DIR
+  fi
 
   # ---- Self-heal: plugin updates move the versioned skill cache dirs; a catalog
   # pointing at vanished dirs is stale — regenerate it via bootstrap before the menus.
@@ -413,6 +424,19 @@ clx() {
     [[ "$action" == "use as-is" ]] && asis=1
     break
   done
+
+  if (( asis )) && [[ "$CLX_PROFILE_READY" == "1" && "$CLX_ALLOW_MISSING" != "1" ]]; then
+    local compatibility_output compatibility_code
+    compatibility_output=$(command node "$_CLX_SOURCE_DIR/scripts/check-compatibility.mjs" "$catalog" "$presets_file" "$preset")
+    compatibility_code=$?
+    if (( compatibility_code == 2 )); then
+      print -ru2 -- "Unavailable in this Claude profile:"
+      print -ru2 -- "$compatibility_output"
+      gum confirm --default=false "Continue without these selections? Saved preset stays unchanged." || return 1
+    elif (( compatibility_code != 0 )); then
+      return 1
+    fi
+  fi
 
   if (( asis )); then
     model_id=$(_clx_preset_model "$presets_file" "$preset")
@@ -539,6 +563,10 @@ clx() {
     local mj; mj=$(printf '%s\n' "${mcp_names[@]}" | jq -R . | jq -s 'map(select(length>0))')
     preset_obj=$(jq --argjson m "$mj" '.mcp=$m' <<<"$preset_obj")
 
+    if [[ -n "$preset" && "$CLX_PROFILE_READY" == "1" ]]; then
+      preset_obj=$(command node "$_CLX_SOURCE_DIR/scripts/preserve-unavailable.mjs" "$catalog" "$presets_file" "$preset" "$preset_obj") || return 1
+    fi
+
     # Save: customizing an existing preset offers an in-place update; starting
     # blank keeps the confirm+name flow. Esc/decline anywhere still launches.
     local save_choice="" sname
@@ -578,7 +606,7 @@ clx() {
   fi
 
   print -r -- "clx → model=$model_id  effort=${effort:-default}  enabled=(${enabled_ids[*]:-none})  subset-dirs=${#plugin_dir_args[@]}  mcp=(${mcp_names[*]:-none})  prompt=$([[ -n "$sys_prompt" ]] && echo yes || echo no)"
-  claude --model "$model_id" "${effort_args[@]}" "${prompt_args[@]}" \
+  "${CLX_CLAUDE_BIN:-claude}" --model "$model_id" "${effort_args[@]}" "${prompt_args[@]}" \
     --strict-mcp-config --mcp-config "$mcp_file" \
     --settings "$settings_file" \
     "${plugin_dir_args[@]}"
