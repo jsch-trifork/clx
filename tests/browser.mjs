@@ -88,6 +88,11 @@ try {
     const page = await browser.newPage({ viewport: { width, height: 860 } }),
       errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
+    await page
+      .context()
+      .grantPermissions(["clipboard-read", "clipboard-write"], {
+        origin: new URL(url).origin,
+      });
     await page.goto(url);
     await page.locator(".overview-family").first().waitFor();
     assert.equal(await page.locator(".overview-node").count(), 92);
@@ -106,6 +111,27 @@ try {
         document.querySelector('.update-status [role="status"]').textContent ===
         "Copied",
     );
+    assert.equal(
+      await page.evaluate(() => navigator.clipboard.readText()),
+      "clx update",
+    );
+    await page.evaluate(() => {
+      Object.defineProperty(navigator.clipboard, "writeText", {
+        configurable: true,
+        value: async () => {
+          throw new DOMException("Clipboard access denied", "NotAllowedError");
+        },
+      });
+    });
+    await page
+      .getByRole("button", { name: "Copy command", exact: true })
+      .click();
+    await page.waitForFunction(
+      () =>
+        document.querySelector('.update-status [role="status"]').textContent ===
+        "Select and copy the command above.",
+    );
+    assert.equal(await updateNotice.locator("code").innerText(), "clx update");
     await page.getByRole("button", { name: "Dismiss", exact: true }).click();
     assert.equal(await updateNotice.isVisible(), false);
     const newPreset = page.getByRole("button", {
