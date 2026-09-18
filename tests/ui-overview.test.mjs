@@ -1,35 +1,63 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { familyLayout, familyColors } from "../web/overview.js";
+import {
+  familyLayout,
+  familyColors,
+  radialSkillTree,
+} from "../web/overview.js";
 
-test("large collections reserve separate hub and label areas around all four sides", () => {
-  for (const count of [7, 8, 10, 12, 18, 32])
-    for (const width of [390, 1280, 1920])
-      for (const height of [680, 860]) {
-        const layout = familyLayout(count, width, height),
-          scale = Math.max(width, 1280) / 1586;
-        assert.equal(layout.positions.length, count);
-        for (const face of ["top", "bottom", "left", "right"])
-          assert(layout.positions.some((p) => p.face === face));
-        for (const [i, a] of layout.positions.entries())
-          for (const b of layout.positions.slice(i + 1))
-            assert(
-              Math.abs(a.x - b.x) * scale >= 330 ||
-                Math.abs(a.y - b.y) * scale >= 190,
-              `${count} skillsets at ${width}×${height} overlap`,
-            );
-        for (const p of layout.positions) {
-          const x = p.x * scale,
-            y = p.y * scale + (height - 992 * scale) / 2;
-          assert(x >= 140 && x <= layout.width - 140);
-          assert(y >= 150 && y <= height - 150);
-        }
+test("large collections form a true evenly spaced circle around the core", () => {
+  for (const count of [7, 8, 12, 18, 32])
+    for (const width of [390, 1280, 1920]) {
+      const layout = familyLayout(count, width, 860);
+      assert.equal(layout.circular, true);
+      assert.equal(layout.positions.length, count);
+      const radii = layout.positions.map((p) =>
+        Math.hypot(p.x - layout.center[0], p.y - layout.center[1]),
+      );
+      for (const r of radii) assert(Math.abs(r - radii[0]) < 0.001);
+      for (let i = 1; i < count; i++)
         assert(
-          layout.width <= Math.max(width, 800 + count * 200),
-          "map grew excessively",
+          Math.abs(
+            layout.positions[i].angle -
+              layout.positions[i - 1].angle -
+              (Math.PI * 2) / count,
+          ) < 0.001,
         );
-        assert.deepEqual(layout, familyLayout(count, width, height));
-      }
+      for (const p of layout.positions)
+        assert(p.x > 0 && p.x < layout.width && p.y > 0 && p.y < layout.height);
+    }
+});
+test("overview uses the real skill tree with shared forks and no decorative nodes", () => {
+  for (const count of [0, 1, 7, 40, 80]) {
+    const skills = Array.from({ length: count }, (_, i) => ({
+      id: `skill-${i}`,
+    }));
+    const hub = familyLayout(12, 1280, 860).positions[3];
+    const tree = radialSkillTree(skills, hub, 12);
+    assert.equal(tree.points.length, count);
+    assert.equal(tree.edges.length, count);
+    const valid = new Set([
+      `${hub.x},${hub.y}`,
+      ...tree.points.map((p) => `${p.x},${p.y}`),
+    ]);
+    for (const e of tree.edges) {
+      assert(valid.has(e.a.join(",")));
+      assert(valid.has(e.b.join(",")));
+    }
+    if (count >= 40) {
+      const forks = new Map();
+      tree.edges
+        .filter((e) => !e.fromHub)
+        .forEach((e) =>
+          forks.set(e.a.join(","), (forks.get(e.a.join(",")) || 0) + 1),
+        );
+      assert(
+        [...forks.values()].some((n) => n > 1),
+        "shared skill forks are preserved",
+      );
+    }
+  }
 });
 test("small collections retain their established layout and palette", () => {
   assert.deepEqual(familyLayout(2, 1280, 860).positions, [

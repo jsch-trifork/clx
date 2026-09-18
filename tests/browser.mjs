@@ -416,15 +416,24 @@ try {
         };
       }),
     );
-    for (const [i, a] of hubRects.entries())
-      for (const b of hubRects.slice(i + 1))
-        assert(
-          a.right <= b.left ||
-            b.right <= a.left ||
-            a.bottom <= b.top ||
-            b.bottom <= a.top,
-          "skillset hubs or names overlap",
-        );
+    const centers = await hubs.evaluateAll((items) =>
+      items.map((e) => {
+        const r = e.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+      }),
+    );
+    const cx = centers.reduce((n, p) => n + p.x, 0) / centers.length,
+      cy = centers.reduce((n, p) => n + p.y, 0) / centers.length;
+    const radii = centers.map((p) => Math.hypot(p.x - cx, p.y - cy));
+    assert(
+      Math.max(...radii) - Math.min(...radii) < 1,
+      "skillsets form a circle",
+    );
+    for (const p of centers)
+      assert(
+        p.x > 0 && p.x < width && p.y > 120 && p.y < 740,
+        "Fit shows every skillset",
+      );
     assert(
       hubRects.some((a) => a.left >= 0 && a.right <= width),
       "initial view must contain a complete skillset and name",
@@ -435,6 +444,8 @@ try {
     );
     assert.equal(new Set(palette).size, 18);
     await page.screenshot({ path: `/tmp/clx-many-skillsets-${width}.png` });
+    await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+    await page.getByRole("button", { name: "Fit", exact: true }).click();
     for (const i of [0, 8, 14, 17]) {
       await hubs.nth(i).focus();
       const bounds = await hubs.nth(i).boundingBox();

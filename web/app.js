@@ -1,4 +1,4 @@
-import { familyLayout, familyColors } from "./overview.js";
+import { familyLayout, familyColors, radialSkillTree } from "./overview.js";
 import { buildSkillTree } from "./geometry.js";
 import { strokeBranch } from "./curve.js";
 import { createCorePainter } from "./core.js";
@@ -327,6 +327,7 @@ import { createCorePainter } from "./core.js";
 
   function build() {
     root.classList.toggle("expanded-family", !overview);
+    root.classList.toggle("circular-overview", overview && circular);
     const back = root.querySelector('[data-action="families"]');
     back.classList.toggle("back-to-skills", !overview);
     back.innerHTML = overview
@@ -341,6 +342,7 @@ import { createCorePainter } from "./core.js";
       buildOverview();
       return;
     }
+    root.querySelectorAll("[data-zoom]").forEach((b) => (b.hidden = true));
     const skills = [...fam().skills];
     ({ points, edges } = buildSkillTree(skills));
     baseEdges = edges;
@@ -353,7 +355,7 @@ import { createCorePainter } from "./core.js";
       b.type = "button";
       b.className = "node" + ([2, 14, 20, 29].includes(i) ? " named" : "");
       b.dataset.skill = p.s.id;
-      b.onfocus = () => revealOverview(p.x);
+      b.onfocus = () => revealOverview(p.x, p.y);
       b.setAttribute("aria-label", p.s.key);
       b.innerHTML = "<span>" + esc(short(p.s)) + "</span>";
       b.onclick = () => {
@@ -654,8 +656,10 @@ import { createCorePainter } from "./core.js";
       models[preset].size +
       " skills selected" +
       (dirty ? " · unsaved changes" : "");
-    root.querySelector("[data-action=back]").disabled = pan <= 0;
-    root.querySelector("[data-action=next]").disabled = pan >= maxPan();
+    root.querySelector("[data-action=back]").disabled =
+      !(circular && overview) && pan <= 0;
+    root.querySelector("[data-action=next]").disabled =
+      !(circular && overview) && pan >= maxPan();
   }
   function resize() {
     w = root.clientWidth;
@@ -666,7 +670,7 @@ import { createCorePainter } from "./core.js";
     ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
     corePainter.resize(w, h, devicePixelRatio);
     layoutLabels();
-    pan = Math.min(pan, maxPan());
+    if (!(circular && overview)) pan = Math.min(pan, maxPan());
     draw();
   }
   function close() {
@@ -881,7 +885,9 @@ import { createCorePainter } from "./core.js";
   }
   root.querySelector("[data-action=families]").onclick = () => {
     overview = true;
-    pan = DATA.families.length > 6 ? overviewHome : 0;
+    pan = 0;
+    overviewPanY = 0;
+    if (circular) overviewZoom = overviewFit;
     menu.hidden = true;
     panel.hidden = true;
     selected = null;
@@ -894,21 +900,45 @@ import { createCorePainter } from "./core.js";
   root.querySelector("[data-action=save]").onclick = () => savePreset();
   root.querySelector("[data-action=cancel]").onclick = cancelEdits;
   root.querySelector("[data-action=back]").onclick = () => {
-    pan = Math.max(0, pan - w * 0.45);
+    pan = circular && overview ? pan - w * 0.3 : Math.max(0, pan - w * 0.45);
     draw();
   };
   root.querySelector("[data-action=next]").onclick = () => {
-    pan = Math.min(maxPan(), pan + w * 0.45);
+    pan =
+      circular && overview ? pan + w * 0.3 : Math.min(maxPan(), pan + w * 0.45);
+    draw();
+  };
+  function zoomOverview(factor) {
+    const before = overviewZoom;
+    overviewZoom = Math.max(overviewFit, Math.min(2, overviewZoom * factor));
+    pan *= overviewZoom / before;
+    overviewPanY *= overviewZoom / before;
+    draw();
+  }
+  root.querySelector('[data-zoom="in"]').onclick = () => zoomOverview(1.3);
+  root.querySelector('[data-zoom="out"]').onclick = () => zoomOverview(1 / 1.3);
+  root.querySelector('[data-zoom="fit"]').onclick = () => {
+    overviewZoom = overviewFit;
+    pan = 0;
+    overviewPanY = 0;
     draw();
   };
   canvas.onpointerdown = (e) => {
-    drag = { x: e.clientX, pan };
+    drag = { x: e.clientX, y: e.clientY, pan, panY: overviewPanY };
     moved = false;
     canvas.setPointerCapture(e.pointerId);
   };
   canvas.onpointermove = (e) => {
     if (!drag) return;
     const dx = e.clientX - drag.x;
+    if (circular && overview) {
+      const dy = e.clientY - drag.y;
+      moved = Math.hypot(dx, dy) > 5;
+      pan = drag.pan - dx;
+      overviewPanY = drag.panY - dy;
+      draw();
+      return;
+    }
     moved = Math.abs(dx) > 5;
     pan = Math.max(0, Math.min(maxPan(), drag.pan - dx));
     draw();
@@ -922,6 +952,15 @@ import { createCorePainter } from "./core.js";
   };
   canvas.onwheel = (e) => {
     e.preventDefault();
+    if (circular && overview) {
+      if (e.ctrlKey || e.metaKey) zoomOverview(Math.exp(-e.deltaY * 0.01));
+      else {
+        pan += e.deltaX;
+        overviewPanY += e.deltaY;
+        draw();
+      }
+      return;
+    }
     pan = Math.max(0, Math.min(maxPan(), pan + e.deltaX + e.deltaY));
     draw();
   };
@@ -937,6 +976,10 @@ import { createCorePainter } from "./core.js";
     overviewFamilies = [],
     overviewWidth = 1280,
     overviewHome = 0,
+    overviewZoom = 1,
+    overviewFit = 1,
+    overviewPanY = 0,
+    circular = false,
     overviewCenter = [793, 505],
     overviewGeometryKey = null;
   function overviewGeometry() {
@@ -955,21 +998,22 @@ import { createCorePainter } from "./core.js";
       DATA.families.map((f) => f.skills.length),
     );
     overviewWidth = layout.width;
-    const top = layout.positions.filter((p) => p.face === "top");
-    const mobileAnchor = top.reduce(
-      (best, p) =>
-        Math.abs(p.x - layout.center[0]) < Math.abs(best.x - layout.center[0])
-          ? p
-          : best,
-      top[0] || { x: layout.center[0] },
-    );
-    const homeX =
-      w < 600 ? (mobileAnchor.x * Math.max(w, 1280)) / 1586 : overviewWidth / 2;
-    overviewHome = Math.max(0, Math.min(overviewWidth - w, homeX - w / 2));
-    pan =
-      newCollection && DATA.families.length > 6
-        ? overviewHome
-        : Math.min(pan, Math.max(0, overviewWidth - w));
+    circular = Boolean(layout.circular);
+    root.classList.toggle("circular-overview", circular && overview);
+    const wasFit = Math.abs(overviewZoom - overviewFit) < 0.001;
+    overviewFit = circular
+      ? Math.min((w - 64) / layout.width, (h - 250) / layout.height)
+      : 1;
+    if (circular) {
+      if (newCollection || wasFit) {
+        overviewZoom = overviewFit;
+        pan = 0;
+        overviewPanY = 0;
+      }
+    } else {
+      overviewHome = 0;
+      pan = Math.min(pan, Math.max(0, overviewWidth - w));
+    }
     overviewCenter = layout.center;
     overviewFamilies = DATA.families.map((f, i) => ({
       f,
@@ -979,38 +1023,14 @@ import { createCorePainter } from "./core.js";
     }));
     overviewNodes = [];
     overviewFamilies.forEach((g) => {
-      if (DATA.families.length > 6) {
-        const os = Math.max(w, 1280) / 1586;
-        const vertical = g.face === "top" || g.face === "bottom";
-        const sign = g.face === "top" || g.face === "left" ? -1 : 1;
-        const hubY = OY(g.y);
-        const available = vertical
-          ? sign < 0
-            ? hubY - 55 - 145
-            : h - 155 - hubY - 55
-          : 140;
-        const levels = Math.max(1, Math.floor(available / 27) + 1);
-        const branches = Math.ceil(g.f.skills.length / levels);
+      if (circular) {
+        const tree = radialSkillTree(g.f.skills, g, DATA.families.length);
+        g.treeEdges = tree.edges;
+        tree.points.forEach((p) => {
+          p.family = g.i;
+          overviewNodes.push(p);
+        });
         g.branches = [];
-        for (let k = 0; k < branches; k++) {
-          const chain = [];
-          for (let j = 0; j < levels; j++) {
-            const skill = g.f.skills[k * levels + j];
-            if (!skill) break;
-            const reach = (vertical ? 55 : 160) + j * 27;
-            const spread = (k - (branches - 1) / 2) * 27;
-            const p = {
-              s: skill,
-              family: g.i,
-              branch: k,
-              x: g.x + (vertical ? spread : sign * reach) / os,
-              y: g.y + (vertical ? sign * reach : spread) / os,
-            };
-            chain.push(p);
-            overviewNodes.push(p);
-          }
-          g.branches.push(chain);
-        }
         return;
       }
       const count = g.f.skills.length,
@@ -1103,13 +1123,27 @@ import { createCorePainter } from "./core.js";
     });
   }
   function OX(x) {
+    if (circular) return (x - overviewCenter[0]) * overviewZoom + w / 2 - pan;
     return (x * Math.max(w, 1280)) / 1586 - pan;
   }
   function OY(y) {
+    if (circular)
+      return (y - overviewCenter[1]) * overviewZoom + h / 2 + 10 - overviewPanY;
     const os = Math.max(w, 1280) / 1586;
     return y * os + (h - 992 * os) / 2;
   }
-  function revealOverview(x) {
+  function revealOverview(x, y) {
+    if (circular && overview) {
+      const sx = OX(x),
+        sy = y === undefined ? h / 2 : OY(y);
+      if (sx >= 40 && sx <= w - 40 && sy >= 120 && sy <= h - 120) return;
+      if (overviewZoom < 0.7) overviewZoom = 0.7;
+      pan = (x - overviewCenter[0]) * overviewZoom;
+      if (y !== undefined)
+        overviewPanY = (y - overviewCenter[1]) * overviewZoom;
+      draw();
+      return;
+    }
     const screen = OX(x);
     if (screen < 40 || screen > w - 40) {
       pan = Math.max(0, Math.min(maxPan(), pan + screen - w / 2));
@@ -1118,6 +1152,7 @@ import { createCorePainter } from "./core.js";
   }
   function buildOverview() {
     overviewGeometry();
+    root.querySelectorAll("[data-zoom]").forEach((b) => (b.hidden = !circular));
     layer.innerHTML = "";
     buttons = [];
     overviewFamilies.forEach((g) => {
@@ -1125,6 +1160,17 @@ import { createCorePainter } from "./core.js";
       b.type = "button";
       b.className = "family overview-family";
       if (g.face) b.dataset.face = g.face;
+      if (circular) {
+        const lower = Math.sin(g.angle);
+        b.dataset.labelSide =
+          lower > 0.7
+            ? "above"
+            : lower > 0.2
+              ? Math.cos(g.angle) > 0
+                ? "inside-left"
+                : "inside-right"
+              : "below";
+      }
       b.style.color = g.color;
       b.innerHTML =
         '<span class="glyph"><i data-lucide="' +
@@ -1142,7 +1188,7 @@ import { createCorePainter } from "./core.js";
       );
       b.onclick = () => changeFamily(g.i);
       b.dataset.overviewFamily = g.i;
-      b.onfocus = () => revealOverview(g.x);
+      b.onfocus = () => revealOverview(g.x, g.y);
       layer.append(b);
     });
     overviewNodes.forEach((p) => {
@@ -1150,7 +1196,7 @@ import { createCorePainter } from "./core.js";
       b.type = "button";
       b.className = "node overview-node";
       b.dataset.skill = p.s.id;
-      b.onfocus = () => revealOverview(p.x);
+      b.onfocus = () => revealOverview(p.x, p.y);
       b.setAttribute(
         "aria-label",
         p.s.key + " in " + DATA.families[p.family].name,
@@ -1167,10 +1213,9 @@ import { createCorePainter } from "./core.js";
       layer.append(b);
     });
     root.querySelector(".trail").textContent = "/   All families";
-    root.querySelector(".explore em").textContent =
-      overviewWidth > w
-        ? "Drag or use arrows to explore all skillsets"
-        : "Select a family to explore";
+    root.querySelector(".explore em").textContent = circular
+      ? "Drag to explore · zoom for detail"
+      : "Select a family to explore";
     if (globalThis.lucide) lucide.createIcons();
     draw();
   }
@@ -1209,10 +1254,13 @@ import { createCorePainter } from "./core.js";
         "#b6adce",
         0.12 + rnd(i + 20) * 0.13,
       );
+    root.classList.toggle("overview-mini", circular && overviewZoom < 0.45);
     const os = Math.max(w, 1280) / 1586,
       cx = OX(overviewCenter[0]),
       cy = OY(overviewCenter[1]),
-      radius = Math.max(34, 44 * os);
+      radius = circular
+        ? Math.max(14, 38 * overviewZoom)
+        : Math.max(34, 44 * os);
     overviewFamilies.forEach((g) => {
       const x = OX(g.x),
         y = OY(g.y);
@@ -1223,6 +1271,22 @@ import { createCorePainter } from "./core.js";
       ctx.strokeStyle = g.color + "45";
       ctx.stroke();
       ctx.setLineDash([]);
+      if (g.treeEdges)
+        g.treeEdges.forEach(({ a, b, p, fromHub }) => {
+          const on = models[preset].has(p.s.id),
+            r = Math.max(2, 4.5 * overviewZoom);
+          strokeBranch(
+            ctx,
+            [OX(a[0]), OY(a[1])],
+            [OX(b[0]), OY(b[1])],
+            on ? g.color + "95" : "#c5bec460",
+            1,
+            fromHub ? radius + 2 : r + 1,
+            r + 1,
+          );
+          if (on) dot(OX(p.x), OY(p.y), r, g.color);
+          else ring(OX(p.x), OY(p.y), r, "#d3cbd5a0", 0.8);
+        });
       g.branches.forEach((chain, branchIndex) => {
         let a =
           branchIndex % 2 === 1
@@ -1264,6 +1328,22 @@ import { createCorePainter } from "./core.js";
       b.style.width = radius * 2 + "px";
       b.style.height = radius * 2 + "px";
       b.style.margin = -radius + "px";
+      if (circular) {
+        b.style.setProperty(
+          "--label-size",
+          Math.max(9, 18 * overviewZoom) + "px",
+        );
+        b.style.setProperty(
+          "--label-width",
+          Math.max(45, (g.f.name.length > 11 ? 210 : 168) * overviewZoom) +
+            "px",
+        );
+        b.style.setProperty(
+          "--icon-size",
+          Math.max(14, 24 * overviewZoom) + "px",
+        );
+        b.title = `${g.f.name} · ${g.f.skills.length} skills`;
+      }
     });
     layer.querySelectorAll(".overview-node").forEach((b, i) => {
       const p = overviewNodes[i];
@@ -1299,8 +1379,10 @@ import { createCorePainter } from "./core.js";
       models[preset].size +
       " selected" +
       (dirty ? " · unsaved" : "");
-    root.querySelector("[data-action=back]").disabled = pan <= 0;
-    root.querySelector("[data-action=next]").disabled = pan >= maxPan();
+    root.querySelector("[data-action=back]").disabled =
+      !(circular && overview) && pan <= 0;
+    root.querySelector("[data-action=next]").disabled =
+      !(circular && overview) && pan >= maxPan();
   }
 
   async function api(path, body) {
