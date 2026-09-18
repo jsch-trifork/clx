@@ -85,7 +85,14 @@ try {
     await page.goto(url);
     await page.locator(".overview-family").first().waitFor();
     assert.equal(await page.locator(".overview-node").count(), 92);
-    await page.locator("[data-action=create]").click();
+    const newPreset = page.getByRole("button", {
+      name: "Create preset",
+      exact: true,
+    });
+    assert.match(await newPreset.innerText(), /New preset/);
+    const createBounds = await newPreset.boundingBox();
+    assert(createBounds.x >= 0 && createBounds.x + createBounds.width <= width);
+    await newPreset.click();
     await page.locator("[data-name]").fill("New " + width);
     await page.locator(".inspector .close").click();
     await page.locator('[data-overview-family="1"]').focus();
@@ -202,8 +209,10 @@ try {
     await page.waitForFunction(() =>
       document.querySelector(".notice").textContent.includes("Preset saved"),
     );
-    await page.locator("[data-action=settings]").click();
-    await page.locator("[data-delete]").click();
+    await page.locator("[data-action=options]").click();
+    await page
+      .getByRole("button", { name: "Delete current preset", exact: true })
+      .click();
     await page.locator("[data-confirm-delete]").click();
     await page.waitForFunction(() =>
       document.querySelector(".notice").textContent.includes("Preset deleted"),

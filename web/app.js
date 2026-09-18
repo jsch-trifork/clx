@@ -1441,6 +1441,9 @@ import { createCorePainter } from "./core.js";
             (dirty ? "disabled" : "") +
             ">Launch in terminal <span>↗</span></button>"
           : "") +
+        (originalName
+          ? '<button class="item danger" data-delete-current>Delete current preset</button>'
+          : "") +
         "<p>Launch opens Claude in the terminal where you ran clx ui.</p>" +
         (DATA.warnings.length
           ? '<p class="warning">' +
@@ -1453,6 +1456,8 @@ import { createCorePainter } from "./core.js";
       .forEach((b) => (b.onclick = () => choosePreset(+b.dataset.choice)));
     menu.querySelector("[data-new]").onclick = createPreset;
     menu.querySelector("[data-edit]").onclick = presetEditor;
+    const deleteCurrent = menu.querySelector("[data-delete-current]");
+    if (deleteCurrent) deleteCurrent.onclick = deletePreset;
     menu.querySelector("[data-reload]").onclick = () =>
       leaveDraft(() => load());
     menu.querySelector("[data-claude-folder]").onclick = () =>

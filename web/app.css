@@ -541,6 +541,23 @@ button:disabled {
   white-space: nowrap;
   text-align: left;
 }
+#clx-atlas .new-preset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 40px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  background: #d6c9f5;
+  border-color: #d6c9f5;
+  color: #211a33;
+  font-weight: 600;
+}
+#clx-atlas .new-preset:hover {
+  background: #e6ddfc;
+  border-color: #e6ddfc;
+}
 #clx-atlas .save {
   font-size: 12px;
   padding: 7px 15px;
@@ -678,11 +695,14 @@ button:disabled {
   #clx-atlas .chrome .actions {
     width: 100%;
     justify-content: flex-end;
-    gap: 20px;
+    flex-wrap: wrap;
+    gap: 10px;
   }
   #clx-atlas .preset-picker {
     margin-right: auto;
     max-width: 180px;
+    flex: 1 1 0;
+    min-width: 0;
   }
   #clx-atlas .notice {
     top: 116px;
