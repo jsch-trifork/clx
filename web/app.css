@@ -1012,3 +1012,29 @@ button:disabled {
     padding: 24px;
   }
 }
+
+#clx-atlas .plain.back-to-skills {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid #82758f;
+  border-radius: 8px;
+  background: #25243a;
+  color: #eeeade;
+  white-space: nowrap;
+}
+#clx-atlas .back-to-skills span {
+  margin-right: 6px;
+}
+#clx-atlas .back-to-skills:hover {
+  background: #363149;
+  border-color: #c2accf;
+}
+@media (max-width: 600px) {
+  #clx-atlas.expanded-family .trail {
+    display: none;
+  }
+  #clx-atlas .plain.back-to-skills {
+    font-size: 12px;
+    padding-inline: 10px;
+  }
+}

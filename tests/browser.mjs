@@ -84,6 +84,25 @@ try {
     await skill.click();
     assert.equal(await skill.getAttribute("aria-pressed"), "true");
     assert.equal(await page.locator(".inspector").isVisible(), false);
+    const back = page.getByRole("button", {
+      name: "Back to all skills",
+      exact: true,
+    });
+    assert.equal(await back.isVisible(), true);
+    const backBounds = await back.boundingBox();
+    assert(backBounds.x >= 0 && backBounds.x + backBounds.width <= width);
+    await page.screenshot({ path: `/tmp/clx-back-${width}.png` });
+    await back.click();
+    assert.equal(await page.locator(".overview-family").count(), 6);
+    assert.equal(
+      await page.locator("[data-mode-edit]").getAttribute("aria-pressed"),
+      "true",
+    );
+    await page.locator('[data-overview-family="1"]').focus();
+    await page.locator('[data-overview-family="1"]').click();
+    await skill.focus();
+    assert.equal(await skill.getAttribute("aria-pressed"), "true");
+
     await skill.click();
     assert.equal(await skill.getAttribute("aria-pressed"), "false");
     await page.locator("[data-action=save]").click();

@@ -322,6 +322,17 @@ import { createCorePainter } from "./core.js";
   }
 
   function build() {
+    root.classList.toggle("expanded-family", !overview);
+    const back = root.querySelector('[data-action="families"]');
+    back.classList.toggle("back-to-skills", !overview);
+    back.innerHTML = overview
+      ? "All skills"
+      : '<span aria-hidden="true">←</span> Back to all skills';
+    back.setAttribute(
+      "aria-label",
+      overview ? "All skills overview" : "Back to all skills",
+    );
+
     if (overview) {
       buildOverview();
       return;
