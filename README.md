@@ -39,7 +39,7 @@ If a previous shell function named `clx` shadows the installed command, remove i
 1. Install the Claude Code plugins you want using Claude Code's plugin manager. CLX does not install plugins.
 2. Run `clx init` to discover skill-bearing plugins registered in your user settings and their installed skill directories. A family is one plugin; its nodes are the skills it actually contains.
 3. Run `clx ui` from the project where you want Claude to work. Open the token-bearing local URL printed in the terminal if a browser does not open automatically.
-4. Press **+** to create a preset. Choose a model, then use **Edit** to select skills. **Save** writes the preset; **Cancel** discards draft changes.
+4. On first use, choose **Create a preset**, give it a name, then click skills to include them. **Save** keeps the preset; **Cancel** returns to the welcome screen. Later, use **+** for additional presets and preset settings to change the model.
 5. Use **Launch in terminal** in the preset picker, or run `clx "Your preset"` in a terminal.
 
 With no plugins, the interface starts with an empty constellation. You can still create presets for a model or configured integrations. Install plugins and run `clx init --force`, then reload the UI, to populate the map. Loose skills in `~/.claude/skills` or project folders are outside CLX's plugin selection controls and may still load through Claude Code itself.

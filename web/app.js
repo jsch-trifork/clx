@@ -30,6 +30,7 @@ import { createCorePainter } from "./core.js";
   const corePainter = createCorePainter(motionCanvas);
   const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
   let baseEdges = [];
+  let namingFirstPreset = false;
   let editMode = false,
     labelsRight = 0,
     motionFrame = 0,
@@ -207,6 +208,7 @@ import { createCorePainter } from "./core.js";
     button.title = skill.key + (change ? " — " + change + " (unsaved)" : "");
   }
   function cancelEdits() {
+    namingFirstPreset = false;
     if (busy) return;
     usePreset();
     notice.textContent = "";
@@ -320,6 +322,17 @@ import { createCorePainter } from "./core.js";
   }
 
   function build() {
+    root.classList.toggle("expanded-family", !overview);
+    const back = root.querySelector('[data-action="families"]');
+    back.classList.toggle("back-to-skills", !overview);
+    back.innerHTML = overview
+      ? "All skills"
+      : '<span aria-hidden="true">←</span> Back to all skills';
+    back.setAttribute(
+      "aria-label",
+      overview ? "All skills overview" : "Back to all skills",
+    );
+
     if (overview) {
       buildOverview();
       return;
@@ -1237,7 +1250,49 @@ import { createCorePainter } from "./core.js";
     };
     dirty = false;
   }
+  function renderWelcome() {
+    const welcome = root.querySelector(".welcome");
+    const visible = !DATA.presets.length && !dirty && !editMode;
+    welcome.hidden = !visible;
+    if (!visible) return;
+    const hasSkills = DATA.families.some((f) => f.skills.length);
+    if (namingFirstPreset) {
+      welcome.innerHTML = `<h2>Name your preset</h2><p>Give it a name for the kind of work you want to do.</p>
+        <form data-first-form><label for="first-preset-name">Preset name</label>
+        <input id="first-preset-name" name="name" placeholder="For example, Code review" required maxlength="120" autocomplete="off">
+        <div class="row"><button class="control primary" type="submit">${hasSkills ? "Choose skills" : "Create preset"}</button><button class="plain" type="button" data-first-back>Back</button></div></form>`;
+      welcome.querySelector("[data-first-back]").onclick = () => {
+        namingFirstPreset = false;
+        renderWelcome();
+        welcome.querySelector("[data-first-create]").focus();
+      };
+      welcome.querySelector("form").onsubmit = (e) => {
+        e.preventDefault();
+        const input = welcome.querySelector("input"),
+          name = input.value.trim();
+        input.setCustomValidity(name ? "" : "Enter a preset name.");
+        if (!input.reportValidity()) return;
+        namingFirstPreset = false;
+        createPreset(name);
+        root.querySelector("[data-mode-edit]").focus();
+      };
+      welcome.querySelector("input").oninput = (e) =>
+        e.target.setCustomValidity("");
+      return;
+    }
+    welcome.innerHTML = hasSkills
+      ? `<h2>Create your first preset</h2><p>Choose the skills you want Claude to use for a particular kind of work.</p><button class="control primary" data-first-create>Create a preset</button><small>Name it. Choose skills. Save it.</small>`
+      : `<h2>Build your skill constellation</h2><p>No skill plugins found yet. Install a skill-bearing plugin in Claude Code, then run this in your terminal:</p><code>clx init --force</code><div class="row"><button class="control primary" data-first-reload>Reload skills</button><button class="plain" data-first-create>Create a preset without skills</button></div><small>You can save a model-only preset now and add skills later.</small>`;
+    welcome.querySelector("[data-first-create]").onclick = () => {
+      namingFirstPreset = true;
+      renderWelcome();
+      welcome.querySelector("input").focus();
+    };
+    const reload = welcome.querySelector("[data-first-reload]");
+    if (reload) reload.onclick = () => load();
+  }
   function renderChrome() {
+    renderWelcome();
     root.querySelector("[data-action=cancel]").hidden = !editMode && !dirty;
     const changes = DATA.families.flatMap((f) => f.skills).map(skillChange);
     const added = changes.filter((c) => c === "added").length;
@@ -1247,7 +1302,11 @@ import { createCorePainter } from "./core.js";
     summary.textContent =
       added || removed
         ? `+ ${added} added · − ${removed} removed · Unsaved`
-        : "Click skills to toggle · Save to keep · Cancel to discard";
+        : DATA.presets.length === 0
+          ? DATA.families.some((f) => f.skills.length)
+            ? "Click skills to include them, then save your preset."
+            : "Save your model-only preset. You can add skills later in Edit mode."
+          : "Click skills to toggle · Save to keep · Cancel to discard";
 
     root.querySelector(".preset-picker").textContent = draft.name + " ▾";
     root.querySelector("[data-action=save]").disabled = !dirty || busy;
@@ -1350,7 +1409,13 @@ import { createCorePainter } from "./core.js";
           leaveDraft(() => load());
       };
   }
-  function createPreset() {
+  function createPreset(firstName) {
+    if (!DATA.presets.length && !dirty && typeof firstName !== "string") {
+      namingFirstPreset = true;
+      renderWelcome();
+      root.querySelector(".welcome input").focus();
+      return;
+    }
     leaveDraft(() => {
       originalName = null;
       preset = DATA.presets.length;
@@ -1358,11 +1423,15 @@ import { createCorePainter } from "./core.js";
         n = 2;
       while (DATA.presets.some((p) => p.name === name))
         name = "New preset " + n++;
-      draft = { name, record: normalize() };
+      draft = {
+        name: typeof firstName === "string" ? firstName : name,
+        record: normalize(),
+      };
       dirty = true;
       menu.hidden = true;
       refresh();
-      presetEditor();
+      if (typeof firstName === "string") setEditMode(true);
+      else presetEditor();
     });
   }
   function presetEditor() {
@@ -1617,7 +1686,7 @@ import { createCorePainter } from "./core.js";
       build();
       resize();
       loading.hidden = true;
-      if (!DATA.presets.length) announce("Create your first preset with +.");
+
       if (DATA.warnings.length) {
         notice.innerHTML =
           "<span>" +

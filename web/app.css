@@ -946,3 +946,95 @@ button:disabled {
     background: #81788e;
   }
 }
+
+#clx-atlas .welcome {
+  position: absolute;
+  z-index: 5;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(450px, calc(100% - 32px));
+  padding: 30px;
+  border: 1px solid #655774;
+  border-radius: 16px;
+  background: #25243a;
+  box-shadow: 0 18px 60px #08081966;
+}
+#clx-atlas .welcome h2 {
+  font:
+    400 34px/1.1 "Cormorant Garamond",
+    Georgia,
+    serif;
+  margin: 0 0 14px;
+  color: #eeeade;
+}
+#clx-atlas .welcome p {
+  color: #d2ccdf;
+  line-height: 1.65;
+  margin: 0 0 22px;
+}
+#clx-atlas .welcome .primary {
+  min-height: 44px;
+  padding: 12px 20px;
+}
+#clx-atlas .welcome small {
+  display: block;
+  margin-top: 18px;
+  color: #bdb5cf;
+  line-height: 1.5;
+}
+#clx-atlas .welcome code {
+  display: block;
+  padding: 12px;
+  background: #19192c;
+  color: #ead4ae;
+  border-radius: 6px;
+  user-select: all;
+}
+#clx-atlas .welcome label {
+  display: block;
+  margin-bottom: 8px;
+}
+#clx-atlas .welcome input {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid #82758f;
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: #19192c;
+  color: #eeeade;
+}
+#clx-atlas .welcome input::placeholder {
+  color: #bdb5cf;
+}
+@media (max-width: 600px) {
+  #clx-atlas .welcome {
+    padding: 24px;
+  }
+}
+
+#clx-atlas .plain.back-to-skills {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid #82758f;
+  border-radius: 8px;
+  background: #25243a;
+  color: #eeeade;
+  white-space: nowrap;
+}
+#clx-atlas .back-to-skills span {
+  margin-right: 6px;
+}
+#clx-atlas .back-to-skills:hover {
+  background: #363149;
+  border-color: #c2accf;
+}
+@media (max-width: 600px) {
+  #clx-atlas.expanded-family .trail {
+    display: none;
+  }
+  #clx-atlas .plain.back-to-skills {
+    font-size: 12px;
+    padding-inline: 10px;
+  }
+}

@@ -84,6 +84,25 @@ try {
     await skill.click();
     assert.equal(await skill.getAttribute("aria-pressed"), "true");
     assert.equal(await page.locator(".inspector").isVisible(), false);
+    const back = page.getByRole("button", {
+      name: "Back to all skills",
+      exact: true,
+    });
+    assert.equal(await back.isVisible(), true);
+    const backBounds = await back.boundingBox();
+    assert(backBounds.x >= 0 && backBounds.x + backBounds.width <= width);
+    await page.screenshot({ path: `/tmp/clx-back-${width}.png` });
+    await back.click();
+    assert.equal(await page.locator(".overview-family").count(), 6);
+    assert.equal(
+      await page.locator("[data-mode-edit]").getAttribute("aria-pressed"),
+      "true",
+    );
+    await page.locator('[data-overview-family="1"]').focus();
+    await page.locator('[data-overview-family="1"]').click();
+    await skill.focus();
+    assert.equal(await skill.getAttribute("aria-pressed"), "true");
+
     await skill.click();
     assert.equal(await skill.getAttribute("aria-pressed"), "false");
     await page.locator("[data-action=save]").click();
@@ -174,33 +193,68 @@ try {
     );
     await page.close();
   }
-  // A new install has no saved presets; create the first one without a prototype snapshot.
-  await writeFile(presetsFile, "{}");
-  await writeFile(
-    catalogFile,
-    JSON.stringify({
-      models: [{ id: "sonnet", label: "Sonnet" }],
-      skillPlugins: [],
-      otherPlugins: [],
-      mcpServers: {},
-    }),
-  );
-  const page = await browser.newPage();
-  await page.goto(url);
-  const firstRunErrors = [];
-  page.on("pageerror", (e) => firstRunErrors.push(e.message));
-  await page.locator(".chrome").waitFor();
-  assert.equal(await page.locator(".overview-family").count(), 0);
-  await page.locator("[data-action=settings]").click();
-  await page.locator("[data-name]").fill("First");
-  await page.locator("[data-save]").click();
-  await page.waitForFunction(() =>
-    document.querySelector(".notice").textContent.includes("Preset saved"),
-  );
-  assert(JSON.parse(await readFile(presetsFile)).First);
-  assert.deepEqual(firstRunErrors, []);
-  await page.close();
-  console.log("First-run empty preset library passed");
+  for (const width of [1280, 390]) {
+    for (const hasSkills of [true, false]) {
+      await writeFile(presetsFile, "{}");
+      await writeFile(
+        catalogFile,
+        JSON.stringify({
+          models: [{ id: "sonnet", label: "Sonnet" }],
+          skillPlugins: hasSkills ? families : [],
+          otherPlugins: [],
+          mcpServers: {},
+        }),
+      );
+      const page = await browser.newPage({ viewport: { width, height: 860 } });
+      const errors = [];
+      page.on("pageerror", (e) => errors.push(e.message));
+      await page.goto(url);
+      await page.locator(".welcome").waitFor();
+      await page.waitForTimeout(2800);
+      assert.equal(await page.locator(".welcome").isVisible(), true);
+      assert.equal(
+        await page.locator("[data-first-reload]").count(),
+        hasSkills ? 0 : 1,
+      );
+      await page.screenshot({
+        path: `/tmp/clx-welcome-${width}-${hasSkills}.png`,
+      });
+      await page.locator("[data-first-create]").click();
+      await page.locator("#first-preset-name").fill("Code review");
+      await page.locator("[data-first-form] button[type=submit]").click();
+      assert.equal(await page.locator(".welcome").isVisible(), false);
+      assert.equal(
+        await page.locator("[data-mode-edit]").getAttribute("aria-pressed"),
+        "true",
+      );
+      await page.locator("[data-action=cancel]").click();
+      assert.equal(await page.locator(".welcome").isVisible(), true);
+      await page.locator("[data-first-create]").click();
+      await page.locator("#first-preset-name").fill("Code review");
+      await page.locator("[data-first-form] button[type=submit]").click();
+      if (hasSkills) {
+        await page.locator(".overview-node").first().focus();
+        await page.locator(".overview-node").first().click();
+        assert.equal(
+          await page.locator('.overview-node[data-change="added"]').count(),
+          1,
+        );
+      }
+      await page.locator("[data-action=save]").click();
+      await page.waitForFunction(
+        () => !document.querySelector("#clx-atlas").inert,
+      );
+      assert(JSON.parse(await readFile(presetsFile))["Code review"]);
+      await page.reload();
+      await page.locator(".chrome").waitFor();
+      assert.equal(await page.locator(".welcome").isVisible(), false);
+      assert.deepEqual(errors, []);
+      await page.close();
+      console.log(
+        `${width}: first preset with ${hasSkills ? "installed" : "no"} skills; persistent CTA, naming, Cancel, Save and reload passed`,
+      );
+    }
+  }
 } finally {
   await browser?.close();
   await new Promise((r) => server.close(r));
