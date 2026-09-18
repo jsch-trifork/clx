@@ -2085,6 +2085,8 @@ import { createCorePainter } from "./core.js";
       /* Updates must never prevent local use, including offline. */
     }
   }
+  // Catalog responses can arrive before ResizeObserver fires on a fast load.
+  resize();
   startMotion();
   load();
   checkVersion();

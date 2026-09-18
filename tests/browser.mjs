@@ -375,9 +375,28 @@ try {
   );
   for (const width of [1280, 390]) {
     const page = await browser.newPage({ viewport: { width, height: 860 } });
+    // Force the catalog to beat the first ResizeObserver callback, as it can
+    // on CI. Initial placement must use real dimensions without that callback.
+    await page.addInitScript(() => {
+      const NativeResizeObserver = window.ResizeObserver;
+      let released = false;
+      const pending = [];
+      window.ResizeObserver = class extends NativeResizeObserver {
+        constructor(callback) {
+          super((entries, observer) => {
+            if (released) callback(entries, observer);
+            else pending.push(() => callback(entries, observer));
+          });
+        }
+      };
+      window.releaseResizeObservers = () => {
+        released = true;
+        pending.splice(0).forEach((callback) => callback());
+      };
+    });
+    await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto(url);
     await page.locator(".overview-family").first().waitFor();
-    await page.emulateMedia({ reducedMotion: "reduce" });
     const hubs = page.locator(".overview-family");
     assert.equal(await hubs.count(), 18);
     for (const face of ["top", "bottom", "left", "right"])
@@ -410,6 +429,7 @@ try {
       hubRects.some((a) => a.left >= 0 && a.right <= width),
       "initial view must contain a complete skillset and name",
     );
+    await page.evaluate(() => window.releaseResizeObservers());
     const palette = await hubs.evaluateAll((items) =>
       items.map((e) => getComputedStyle(e).color),
     );
