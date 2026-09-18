@@ -2001,6 +2001,32 @@ import { createCorePainter } from "./core.js";
     layoutLabels();
     draw();
   });
+  async function checkVersion() {
+    try {
+      const info = await api("/api/version");
+      if (!info.available) return;
+      const status = root.querySelector(".update-status");
+      status.innerHTML = `<summary>Update available · CLX ${esc(info.latest)}</summary><p>You’re running ${esc(info.current)}. ${info.source ? "Update your source checkout, or install the latest release archive." : "Run this in a terminal, then restart CLX and open its new URL."}</p>${info.source ? "" : `<code>${esc(info.command)}</code><button class="control" data-copy-update>Copy command</button>`}<button class="plain" data-dismiss-update>Dismiss</button><span role="status"></span>`;
+      status.hidden = false;
+      status.querySelector("[data-dismiss-update]").onclick = () => {
+        status.hidden = true;
+      };
+      const copy = status.querySelector("[data-copy-update]");
+      if (copy)
+        copy.onclick = async () => {
+          try {
+            await navigator.clipboard.writeText(info.command);
+            status.querySelector('[role="status"]').textContent = "Copied";
+          } catch {
+            status.querySelector('[role="status"]').textContent =
+              "Select and copy the command above.";
+          }
+        };
+    } catch {
+      /* Updates must never prevent local use, including offline. */
+    }
+  }
   startMotion();
   load();
+  checkVersion();
 })();

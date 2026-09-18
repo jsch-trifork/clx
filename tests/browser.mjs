@@ -55,6 +55,12 @@ let launches = 0;
 const { server, url } = await startServer({
   catalogFile,
   presetsFile,
+  onVersion: async () => ({
+    current: "0.1.5",
+    latest: "0.1.6",
+    available: true,
+    command: "clx update",
+  }),
   getCatalogFile: () => profiles.catalog(),
   onProfiles: async (request) =>
     !request
@@ -85,6 +91,23 @@ try {
     await page.goto(url);
     await page.locator(".overview-family").first().waitFor();
     assert.equal(await page.locator(".overview-node").count(), 92);
+    const updateNotice = page.locator(".update-status");
+    await updateNotice.waitFor();
+    await updateNotice.locator("summary").click();
+    assert.equal(await updateNotice.locator("code").innerText(), "clx update");
+    const updateBounds = await updateNotice.boundingBox();
+    assert(updateBounds.x >= 0 && updateBounds.x + updateBounds.width <= width);
+    await page.screenshot({ path: `/tmp/clx-update-notice-${width}.png` });
+    await page
+      .getByRole("button", { name: "Copy command", exact: true })
+      .click();
+    await page.waitForFunction(
+      () =>
+        document.querySelector('.update-status [role="status"]').textContent ===
+        "Copied",
+    );
+    await page.getByRole("button", { name: "Dismiss", exact: true }).click();
+    assert.equal(await updateNotice.isVisible(), false);
     const newPreset = page.getByRole("button", {
       name: "Create preset",
       exact: true,

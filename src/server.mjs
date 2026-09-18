@@ -26,6 +26,7 @@ export async function startServer({
   onLaunch,
   onSetup,
   onProfiles,
+  onVersion,
   getCatalogFile = () => catalogFile,
 }) {
   const token = randomBytes(32).toString("hex");
@@ -66,6 +67,12 @@ export async function startServer({
             error:
               "Open the authenticated URL printed by clx ui in your terminal.",
           });
+        if (req.method === "GET" && url.pathname === "/api/version") {
+          return json(
+            200,
+            onVersion ? await onVersion() : { available: false },
+          );
+        }
         if (req.method === "GET" && url.pathname === "/api/profiles") {
           if (!onProfiles) return json(200, { profiles: [], activeId: null });
           return json(200, await onProfiles());

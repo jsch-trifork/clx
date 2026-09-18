@@ -323,7 +323,7 @@ clx() {
   local settings="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
   local presets_file="${CLX_PRESETS:-$clx_dir/presets.json}"
   local prompts_dir="${CLX_PROMPTS_DIR:-$clx_dir/prompts}"
-  if [[ "$1" == "ui" || "$1" == "init" ]]; then
+  if [[ "$1" == "ui" || "$1" == "init" || "$1" == "update" || "$1" == "--version" || "$1" == "-v" ]]; then
     local ui_command="$1"
     shift
     local ui_entry="${CLX_UI_BIN:-$_CLX_SOURCE_DIR/bin/clx.mjs}"
