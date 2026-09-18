@@ -65,7 +65,32 @@ The npm install builds local fonts and icons; the release archive already includ
 
 If a previous shell function named `clx` shadows the installed command, remove its old source line from your shell configuration or run `command clx ui`.
 
-To update, download the latest archive and run the install command again. Your local presets and catalog are preserved. Releases are published on GitHub, not the npm registry.
+### Updating CLX
+
+Once you have a version that includes the updater, run:
+
+```sh
+clx --version
+clx update
+clx ui
+```
+
+Save any UI edits and stop the old UI with Ctrl+C first. After updating, open the newly printed URL. CLX updates the installation you are running, verifies the release archive against its SHA-256 checksum, and preserves your presets, profiles, catalog and installed Claude skills. It supports global npm installations and local installations, including the older `~/.claude/clx/ui-app` layout. Updates are never installed automatically. Local npm installs keep verified archives in `.clx-releases` inside the installation folder so npm’s dependency records remain usable.
+
+The UI checks GitHub once when opened and shows an **Update available** notice with a copyable command. Offline or rate-limited checks do not block CLX. The check sends no presets, profile paths or credentials to GitHub. Releases are published on GitHub, not the npm registry; `npm update -g` does not fetch them.
+
+**Upgrading an older version for the first time:** download the latest archive from [Releases](https://github.com/jsch-trifork/clx/releases/latest) and repeat the installation command above. Older versions do not have `clx update` yet.
+
+If your shell still sources the old `~/.claude/clx/clx.zsh` launcher, install that archive into its existing UI location, then run the updater once through Node:
+
+```sh
+npm install --prefix "$HOME/.claude/clx/ui-app" ./clx-constellation-VERSION.tgz
+node "$HOME/.claude/clx/ui-app/node_modules/clx-constellation/bin/clx.mjs" update
+```
+
+Replace `VERSION` with the downloaded archive’s version. This detects the original legacy wrapper, keeps a backup and forwards it to the installed launcher. Open a new terminal afterward; future updates are simply `clx update`. Custom wrappers are left untouched. The UI offers the explicit Node command when it detects an old wrapper.
+
+A source checkout is not overwritten by `clx update`. Update it using Git and `npm ci`, or install a release archive. If npm reports a permissions error, fix access to your npm installation and retry; CLX does not request sudo or change ownership.
 
 ## First use
 
@@ -125,7 +150,7 @@ When choosing a preset in the terminal, **model and effort only (this launch)** 
 - **Save / Cancel:** commit your draft or restore the saved preset. Leaving with changes offers Save or Discard.
 - **Family centre:** in Edit mode, click the icon to select all skills; click again to clear them. A partial selection becomes fully selected. In View mode, the icon opens whole-plugin and skills-only options. Whole plugin includes its hooks and agents; selecting individual skills excludes those plugin extras.
 - **Preset settings:** rename, choose the model and effort, configure MCP/other plugins, or delete the preset. Deleting a preset never deletes installed skills.
-- **Navigation:** drag or use the arrows to pan. The overview remains wide on narrow screens so nodes do not overlap. Every preset appears in the scrolling bottom bar.
+- **Navigation:** drag or use the arrows to pan. Collections with more than six skillsets use the top, bottom and sides of the overview, with distinct colors and space reserved for names. Larger collections widen the map; on narrow screens it opens on a complete skillset. Every preset appears in the scrolling bottom bar.
 
 Motion respects reduced-motion preferences and pauses in hidden tabs. No fonts or scripts are fetched from a CDN.
 

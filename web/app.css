@@ -1158,3 +1158,57 @@ button:disabled {
 #clx-atlas .load-state:has(.setup-recovery:not([hidden])) {
   justify-content: flex-start;
 }
+
+#clx-atlas .update-status {
+  position: absolute;
+  top: 82px;
+  right: 28px;
+  z-index: 6;
+  max-width: min(350px, calc(100% - 40px));
+  padding: 10px 14px;
+  border: 1px solid #68617c;
+  border-radius: 6px;
+  background: #242239;
+  color: #e7e2f2;
+  font-size: 12px;
+}
+#clx-atlas .update-status[hidden] {
+  display: none;
+}
+#clx-atlas .update-status summary {
+  cursor: pointer;
+  color: #d6c9f5;
+}
+#clx-atlas .update-status p {
+  line-height: 1.6;
+}
+#clx-atlas .update-status code {
+  display: block;
+  margin: 12px 0;
+  user-select: text;
+  overflow-wrap: anywhere;
+}
+#clx-atlas .update-status button {
+  margin-right: 12px;
+}
+#clx-atlas .update-status [role="status"] {
+  display: block;
+  margin-top: 8px;
+}
+@media (max-width: 600px) {
+  #clx-atlas .update-status {
+    top: 156px;
+    right: 20px;
+  }
+}
+
+#clx-atlas.editing .update-status,
+#clx-atlas:has(.welcome:not([hidden])) .update-status,
+#clx-atlas:has(.load-state:not([hidden])) .update-status {
+  display: none;
+}
+
+#clx-atlas .overview-family[data-face="bottom"] .caption {
+  top: auto;
+  bottom: calc(100% + 10px);
+}

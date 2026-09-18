@@ -55,6 +55,12 @@ let launches = 0;
 const { server, url } = await startServer({
   catalogFile,
   presetsFile,
+  onVersion: async () => ({
+    current: "0.1.5",
+    latest: "0.1.6",
+    available: true,
+    command: "clx update",
+  }),
   getCatalogFile: () => profiles.catalog(),
   onProfiles: async (request) =>
     !request
@@ -82,9 +88,52 @@ try {
     const page = await browser.newPage({ viewport: { width, height: 860 } }),
       errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
+    await page
+      .context()
+      .grantPermissions(["clipboard-read", "clipboard-write"], {
+        origin: new URL(url).origin,
+      });
     await page.goto(url);
     await page.locator(".overview-family").first().waitFor();
     assert.equal(await page.locator(".overview-node").count(), 92);
+    const updateNotice = page.locator(".update-status");
+    await updateNotice.waitFor();
+    await updateNotice.locator("summary").click();
+    assert.equal(await updateNotice.locator("code").innerText(), "clx update");
+    const updateBounds = await updateNotice.boundingBox();
+    assert(updateBounds.x >= 0 && updateBounds.x + updateBounds.width <= width);
+    await page.screenshot({ path: `/tmp/clx-update-notice-${width}.png` });
+    await page
+      .getByRole("button", { name: "Copy command", exact: true })
+      .click();
+    await page.waitForFunction(
+      () =>
+        document.querySelector('.update-status [role="status"]').textContent ===
+        "Copied",
+    );
+    assert.equal(
+      await page.evaluate(() => navigator.clipboard.readText()),
+      "clx update",
+    );
+    await page.evaluate(() => {
+      Object.defineProperty(navigator.clipboard, "writeText", {
+        configurable: true,
+        value: async () => {
+          throw new DOMException("Clipboard access denied", "NotAllowedError");
+        },
+      });
+    });
+    await page
+      .getByRole("button", { name: "Copy command", exact: true })
+      .click();
+    await page.waitForFunction(
+      () =>
+        document.querySelector('.update-status [role="status"]').textContent ===
+        "Select and copy the command above.",
+    );
+    assert.equal(await updateNotice.locator("code").innerText(), "clx update");
+    await page.getByRole("button", { name: "Dismiss", exact: true }).click();
+    assert.equal(await updateNotice.isVisible(), false);
     const newPreset = page.getByRole("button", {
       name: "Create preset",
       exact: true,
@@ -295,6 +344,115 @@ try {
       );
     }
   }
+  // A collection larger than the original six must occupy all sides without
+  // overlapping hub labels, and every group must remain reachable by keyboard.
+  const savedCatalog = await readFile(catalogFile);
+  const savedPresets = await readFile(presetsFile);
+  const manyFamilies = Array.from({ length: 18 }, (_, i) => ({
+    ...families[i % families.length],
+    id: `collection-${i}@test`,
+    name: `Skillset ${i + 1}`,
+  }));
+  await writeFile(
+    catalogFile,
+    JSON.stringify({
+      models: [{ id: "sonnet", label: "Sonnet" }],
+      skillPlugins: manyFamilies,
+      otherPlugins: [],
+      mcpServers: {},
+    }),
+  );
+  await writeFile(
+    presetsFile,
+    JSON.stringify({
+      Existing: {
+        model: "sonnet",
+        skillPlugins: {},
+        otherPlugins: [],
+        mcp: [],
+      },
+    }),
+  );
+  for (const width of [1280, 390]) {
+    const page = await browser.newPage({ viewport: { width, height: 860 } });
+    // Force the catalog to beat the first ResizeObserver callback, as it can
+    // on CI. Initial placement must use real dimensions without that callback.
+    await page.addInitScript(() => {
+      const NativeResizeObserver = window.ResizeObserver;
+      let released = false;
+      const pending = [];
+      window.ResizeObserver = class extends NativeResizeObserver {
+        constructor(callback) {
+          super((entries, observer) => {
+            if (released) callback(entries, observer);
+            else pending.push(() => callback(entries, observer));
+          });
+        }
+      };
+      window.releaseResizeObservers = () => {
+        released = true;
+        pending.splice(0).forEach((callback) => callback());
+      };
+    });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto(url);
+    await page.locator(".overview-family").first().waitFor();
+    const hubs = page.locator(".overview-family");
+    assert.equal(await hubs.count(), 18);
+    for (const face of ["top", "bottom", "left", "right"])
+      assert(
+        (await page.locator(`.overview-family[data-face="${face}"]`).count()) >
+          0,
+      );
+    const hubRects = await hubs.evaluateAll((items) =>
+      items.map((e) => {
+        const a = e.getBoundingClientRect(),
+          b = e.querySelector(".caption").getBoundingClientRect();
+        return {
+          left: Math.min(a.left, b.left),
+          right: Math.max(a.right, b.right),
+          top: Math.min(a.top, b.top),
+          bottom: Math.max(a.bottom, b.bottom),
+        };
+      }),
+    );
+    for (const [i, a] of hubRects.entries())
+      for (const b of hubRects.slice(i + 1))
+        assert(
+          a.right <= b.left ||
+            b.right <= a.left ||
+            a.bottom <= b.top ||
+            b.bottom <= a.top,
+          "skillset hubs or names overlap",
+        );
+    assert(
+      hubRects.some((a) => a.left >= 0 && a.right <= width),
+      "initial view must contain a complete skillset and name",
+    );
+    await page.evaluate(() => window.releaseResizeObservers());
+    const palette = await hubs.evaluateAll((items) =>
+      items.map((e) => getComputedStyle(e).color),
+    );
+    assert.equal(new Set(palette).size, 18);
+    await page.screenshot({ path: `/tmp/clx-many-skillsets-${width}.png` });
+    for (const i of [0, 8, 14, 17]) {
+      await hubs.nth(i).focus();
+      const bounds = await hubs.nth(i).boundingBox();
+      assert(bounds.x >= 0 && bounds.x + bounds.width <= width);
+    }
+    await hubs.nth(14).focus();
+    await hubs.nth(14).click();
+    await page
+      .getByRole("button", { name: "Back to all skills", exact: true })
+      .click();
+    assert.equal(await hubs.count(), 18);
+    await page.close();
+    console.log(
+      `${width}: 18 skillsets, four-sided layout, distinct colors, label separation and keyboard navigation passed`,
+    );
+  }
+  await writeFile(catalogFile, savedCatalog);
+  await writeFile(presetsFile, savedPresets);
   const alternate = join(dir, "alternate profile");
   const plugin = join(
     alternate,
