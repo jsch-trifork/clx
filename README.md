@@ -10,10 +10,10 @@ Requirements: **Node.js 20+**, **zsh**, **jq**, **gum**, and an installed, authe
 
 On macOS, install the shell dependencies with `brew install zsh jq gum`. On Linux, install zsh and jq through your distribution and follow [gum's installation instructions](https://github.com/charmbracelet/gum#installation). Install and sign into [Claude Code](https://code.claude.com/docs/en/setup) separately.
 
-Download `clx-constellation-0.1.0.tgz` from the [v0.1.0 release](https://github.com/jsch-trifork/clx/releases/tag/v0.1.0), then:
+Download the `.tgz` archive from the [latest release](https://github.com/jsch-trifork/clx/releases/latest). In a directory containing only that CLX archive, run:
 
 ```sh
-npm install -g ./clx-constellation-0.1.0.tgz
+npm install -g ./clx-constellation-*.tgz
 clx init
 cd /path/to/your/project
 clx ui
@@ -26,13 +26,15 @@ git clone https://github.com/jsch-trifork/clx.git
 cd clx
 npm ci
 npm pack
-npm install -g ./clx-constellation-0.1.0.tgz
+npm install -g ./clx-constellation-*.tgz
 clx init
 ```
 
 The npm install builds local fonts and icons; the release archive already includes them. This project is not published to the npm registry: use the release archive or source instructions above.
 
 If a previous shell function named `clx` shadows the installed command, remove its old source line from your shell configuration or run `command clx ui`.
+
+To update, download the latest archive and run the install command again. Your local presets and catalog are preserved. Releases are published on GitHub, not the npm registry.
 
 ## First use
 

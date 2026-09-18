@@ -725,7 +725,9 @@ import { createCorePainter } from "./core.js";
     );
     panel.querySelector(".close").focus({ preventScroll: true });
   }
+  let noticeTimer;
   function announce(t, canUndo = false) {
+    clearTimeout(noticeTimer);
     notice.textContent = t;
     if (canUndo) {
       const b = document.createElement("button");
@@ -737,7 +739,7 @@ import { createCorePainter } from "./core.js";
       };
       notice.append(b);
     }
-    setTimeout(() => {
+    noticeTimer = setTimeout(() => {
       if (!canUndo) notice.textContent = "";
     }, 2600);
   }

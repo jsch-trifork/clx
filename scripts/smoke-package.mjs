@@ -5,7 +5,10 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 const exec = promisify(execFile);
-const archive = resolve(process.argv[2] || "clx-constellation-0.1.0.tgz");
+const pkg = JSON.parse(
+  await readFile(new URL("../package.json", import.meta.url)),
+);
+const archive = resolve(process.argv[2] || `${pkg.name}-${pkg.version}.tgz`);
 const dir = await mkdtemp(join(tmpdir(), "clx-package-"));
 let server;
 try {

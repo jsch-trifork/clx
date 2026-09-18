@@ -32,3 +32,27 @@ jobs:
         with:
           name: clx-${{ matrix.os }}-node${{ matrix.node }}
           path: clx-constellation-*.tgz
+  release:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'jsch-trifork/clx'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: publish-release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: sudo apt-get update && sudo apt-get install -y zsh jq
+      - run: npm ci
+      - name: Publish tested main commit
+        run: node scripts/release.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}

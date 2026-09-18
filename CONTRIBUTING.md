@@ -13,3 +13,13 @@ When editing the UI, preserve skill selection semantics, keyboard navigation, re
 All changes to `main` must go through a pull request. Direct pushes, force pushes, and deletion of `main` are blocked, including for the repository owner. All four Linux/macOS CI checks must pass and review conversations must be resolved.
 
 The repository owner reviews every file through `.github/CODEOWNERS`. New commits dismiss earlier approvals. The owner has a PR-only review bypass for self-authored PRs, since GitHub does not permit authors to approve their own work. This exception does not bypass CI or permit direct pushes.
+
+## Automated releases
+
+A push to `main` publishes a GitHub release only after all four CI matrix jobs pass. Pull requests and other branches cannot publish. The release job has its own `contents: write` permission; test jobs remain read-only.
+
+The job serializes publishing, skips commits that already have a stable release, and skips a run if its commit is no longer the tip of `main`. If several merges arrive together, the newest successful main run releases their combined changes. Failed CI never publishes; rerun a failed release job after correcting the failure.
+
+The next version is the highest published stable version plus one patch, or `package.json`'s version if that is higher. To start a new minor or major series, update both package.json and package-lock.json in a PR. Otherwise, source versions remain the development baseline: the job stamps the release version into its temporary checkout without committing to `main`.
+
+The release contains a built `.tgz` archive and `clx-SHA256SUMS.txt`, with generated notes. The archive is installed and smoke-tested against an empty user directory before publishing. Nothing is published to npm. A draft or conflicting tag with the chosen version stops publishing for maintainer inspection rather than overwriting assets. To recover an interrupted publication, inspect the draft/tag, remove only the incomplete release/tag if appropriate, and rerun the release job.
