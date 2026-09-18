@@ -386,7 +386,22 @@ import { createCorePainter } from "./core.js";
       fam().skills.length +
       ' skills · one family</small></span><span class="glyph"><i data-lucide="hexagon"></i></span>';
     main.setAttribute("aria-label", fam().name + " family options");
-    main.onclick = familyOptions;
+    main.onclick = () => {
+      if (!editMode) {
+        familyOptions();
+        return;
+      }
+      const all = fam().skills.length > 0 && fam().skills.every(isOn);
+      draft.record.skillPlugins[fam().id] = all
+        ? { mode: "off" }
+        : { mode: "subset", skills: fam().skills.map((s) => s.key) };
+      changed();
+      announce(
+        all
+          ? "All skills removed from this skillset."
+          : "All skills selected. Plugin hooks and agents are not included.",
+      );
+    };
     layer.append(main);
     main.dataset.main = "1";
     const sat = document.createElement("button");
@@ -582,6 +597,27 @@ import { createCorePainter } from "./core.js";
     main.style.height = 104 * scale + "px";
     main.style.margin = -52 * scale + "px";
     main.style.color = colors[family];
+    const allSelected = fam().skills.length > 0 && fam().skills.every(isOn);
+    main.classList.toggle("all-selected", allSelected);
+    if (editMode) {
+      main.setAttribute("aria-pressed", String(allSelected));
+      main.setAttribute(
+        "aria-label",
+        (allSelected ? "Deselect" : "Select") +
+          " all " +
+          fam().skills.length +
+          " skills in " +
+          fam().name,
+      );
+    } else {
+      main.removeAttribute("aria-pressed");
+      main.setAttribute("aria-label", fam().name + " family options");
+    }
+    main.querySelector("small").textContent = editMode
+      ? allSelected
+        ? "All selected · click to clear"
+        : "Click to select all " + fam().skills.length
+      : fam().skills.length + " skills · family options";
     const sx = X(248),
       sy = Y(267);
     ring(sx, sy, 44 * scale, "#a58ac122");
@@ -1533,7 +1569,7 @@ import { createCorePainter } from "./core.js";
             "</option>",
         )
         .join("") +
-      "</select></label><p>Choose skills in the constellation. Click a family’s centre to choose whole-plugin or skills-only loading.</p><details><summary>MCP servers · " +
+      "</select></label><p>Choose skills in the constellation. In Edit mode, click a family’s centre to select or clear all its skills. In View mode, the centre opens whole-plugin options.</p><details><summary>MCP servers · " +
       draft.record.mcp.length +
       "</summary>" +
       checkboxList(
@@ -1793,48 +1829,85 @@ import { createCorePainter } from "./core.js";
   async function showSetup(problem = "") {
     const host = root.querySelector(".load-state");
     host.hidden = false;
-    host.innerHTML = `<h2>Connect your Claude configuration</h2><p>Choose the folder containing <code>settings.json</code> and <code>plugins</code>. This is your Claude profile, not the Claude executable.</p>
-      <form data-setup-form><label for="claude-config-folder">Claude configuration folder</label><input id="claude-config-folder" name="directory" placeholder="~/.claude" required autocomplete="off" spellcheck="false" aria-describedby="claude-folder-help">
-      <p id="claude-folder-help">Paste a folder path. CLX remembers it for skill discovery and launched sessions. Your presets are kept.</p>
-      <p data-setup-error role="alert"></p><div class="row"><button class="control primary" type="submit" disabled>Scan this folder</button><button class="plain" type="button" data-setup-cancel>${draft ? "Cancel" : "Try again"}</button></div></form>`;
+    host.innerHTML = `<h2>Connect your Claude configuration</h2><p>Choose the folder containing <code>settings.json</code> and <code>plugins</code>.</p>
+      <form data-setup-form><label for="claude-config-folder">Claude configuration folder</label><input id="claude-config-folder" name="directory" value="~/.claude" required autocomplete="off" spellcheck="false" aria-describedby="claude-folder-help">
+      <p id="claude-folder-help">Paste a folder path, not a web URL. Your presets are kept.</p>
+      <p data-setup-error role="alert"></p><div class="row"><button class="control primary" type="submit">Scan this folder</button><button class="plain" type="button" data-setup-retry>Retry connection</button><button class="plain" type="button" data-setup-cancel>${draft ? "Cancel" : "Try again"}</button></div></form>
+      <section class="setup-recovery" hidden><h3>Set up from the terminal</h3><p>Run this command, then restart CLX and open its new URL:</p><code data-setup-command></code></section>`;
     const form = host.querySelector("form"),
       input = host.querySelector("input"),
       submit = host.querySelector('[type="submit"]'),
-      error = host.querySelector("[data-setup-error]");
+      error = host.querySelector("[data-setup-error]"),
+      retry = host.querySelector("[data-setup-retry]"),
+      cancel = host.querySelector("[data-setup-cancel]"),
+      recovery = host.querySelector(".setup-recovery");
+    let edited = false,
+      scanning = false;
+    const command = () => {
+      host.querySelector("[data-setup-command]").textContent =
+        "clx init --claude-config-dir '" +
+        input.value.replaceAll("'", "'\"'\"'") +
+        "' --force";
+    };
+    const explain = (e) => {
+      error.textContent =
+        e.status === 404
+          ? "This page and the running CLX server are different versions. Stop CLX with Ctrl+C, run command clx ui again, and open the new URL. If this continues, update CLX and restart it."
+          : e.message;
+      recovery.hidden = false;
+      command();
+    };
     error.textContent = problem;
-    host.querySelector("[data-setup-cancel]").onclick = () => {
+    cancel.onclick = () => {
       if (draft) host.hidden = true;
       else load();
     };
-    try {
-      input.value = (await api("/api/setup")).directory;
-      submit.disabled = false;
-    } catch (e) {
-      error.textContent = e.message;
-    }
-    input.focus();
     input.oninput = () => {
-      error.textContent = "";
+      edited = true;
+      command();
     };
+    async function connect() {
+      retry.disabled = true;
+      try {
+        const result = await api("/api/setup");
+        if (!edited && !scanning) input.value = result.directory;
+        if (!scanning) {
+          error.textContent = "";
+          recovery.hidden = true;
+        }
+      } catch (e) {
+        if (!scanning) explain(e);
+      } finally {
+        retry.disabled = false;
+      }
+    }
+    retry.onclick = connect;
     form.onsubmit = async (event) => {
       event.preventDefault();
+      if (scanning) return;
+      scanning = true;
       submit.disabled = true;
       input.disabled = true;
-      host.querySelector("[data-setup-cancel]").disabled = true;
+      cancel.disabled = true;
+      retry.disabled = true;
       submit.textContent = "Scanning…";
       error.textContent = "";
       try {
         await api("/api/setup", { directory: input.value });
         await load();
       } catch (e) {
-        error.textContent = e.message;
+        explain(e);
+      } finally {
+        scanning = false;
         submit.disabled = false;
         input.disabled = false;
-        host.querySelector("[data-setup-cancel]").disabled = false;
+        cancel.disabled = false;
+        retry.disabled = false;
         submit.textContent = "Scan this folder";
-        input.focus();
       }
     };
+    input.focus();
+    await connect();
   }
   async function load() {
     const loading = root.querySelector(".load-state");

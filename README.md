@@ -116,12 +116,14 @@ clx ui
 
 `--config-dir` means **where CLX stores its own shared presets and profiles**; `--claude-config-dir` means **which Claude configuration to discover**. Custom profiles read their own `.claude.json` for MCP discovery. The default `~/.claude` profile retains the usual `~/.claude.json` location. CLX does not copy credentials or change profile configuration files.
 
+When choosing a preset in the terminal, **model and effort only (this launch)** changes just those two settings and launches immediately with the preset’s existing skills, integrations, and prompt. The saved preset stays unchanged.
+
 ## Using the UI
 
 - **View:** click a family to expand its tree and reveal all skill names. Click a skill for details beside its dot on desktop or in a bottom sheet on mobile.
 - **Edit:** click a skill to toggle it directly. Filled dots are selected; hollow dots are not. **+** and **−** markers distinguish unsaved additions and removals.
 - **Save / Cancel:** commit your draft or restore the saved preset. Leaving with changes offers Save or Discard.
-- **Family centre:** select the whole plugin, all skills only, or none. Whole plugin includes its hooks and agents; selecting individual skills excludes those plugin extras.
+- **Family centre:** in Edit mode, click the icon to select all skills; click again to clear them. A partial selection becomes fully selected. In View mode, the icon opens whole-plugin and skills-only options. Whole plugin includes its hooks and agents; selecting individual skills excludes those plugin extras.
 - **Preset settings:** rename, choose the model and effort, configure MCP/other plugins, or delete the preset. Deleting a preset never deletes installed skills.
 - **Navigation:** drag or use the arrows to pan. The overview remains wide on narrow screens so nodes do not overlap. Every preset appears in the scrolling bottom bar.
 
@@ -162,6 +164,9 @@ clx                             # terminal preset picker
 The launcher uses temporary files and symlinks rather than changing your global Claude settings. Plugins absent from the catalog and loose skills can remain active through Claude's own settings. Refresh the catalog after changing plugins.
 
 ## Troubleshooting
+
+If setup reports different UI/server versions, stop CLX with Ctrl+C, run `command clx ui` again, and open the newly printed URL. The setup screen offers **Retry connection** and a terminal initialization command using your entered folder. Pasting a path remains available even when the automatic lookup fails.
+
 
 - **No catalog:** run `clx init`. Existing catalogs are preserved unless `--force` is passed.
 - **No skills:** install skill-bearing plugins in Claude Code and refresh the catalog. CLX does not ship the author's plugins or presets.

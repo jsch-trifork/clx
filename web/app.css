@@ -1116,3 +1116,25 @@ button:disabled {
     display: none;
   }
 }
+
+#clx-atlas .family.all-selected .glyph {
+  background: #b39be530;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 2px currentColor;
+}
+#clx-atlas .setup-recovery {
+  width: min(520px, 100%);
+  text-align: left;
+}
+#clx-atlas .setup-recovery code {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: all;
+  padding: 12px;
+  background: #25243a;
+  color: #eeeade;
+}
+#clx-atlas .load-state:has(.setup-recovery:not([hidden])) {
+  justify-content: flex-start;
+}

@@ -153,6 +153,32 @@ EOF
   assert_json_eq "preset_asis_mcp" "$(jq -c '.mcpServers|keys' "$out/m.json")" '["playwright"]'
   assert_eq "preset_asis_noleak" "$(grep -cE 'raw_labels=|choice=' "$out/stdout1")" "0"
 
+  # Quick changes must skip all skill/integration menus and preserve the preset.
+  local before_quick=$(cat "$pf")
+  cat > "$stub/gum" <<EOF
+#!/bin/zsh
+[[ "\$1" == choose ]] && cat >/dev/null
+local header=""
+while (( \$# )); do case "\$1" in --header) header="\$2"; shift 2;; --selected) shift 2;; *) shift;; esac; done
+print -r -- "\$header" >> "$out/quick_menus"
+case "\$header" in
+  "Preset:") print -r -- p1 ;;
+  "Preset '"*) print -r -- "model and effort only (this launch)" ;;
+  "Model (this launch only):") print -r -- "Sonnet 4.6 (fast; default)" ;;
+  "Effort (this launch only):") print -r -- high ;;
+  *) exit 3 ;;
+esac
+EOF
+  chmod +x "$stub/gum"
+  ( PATH="$stub:$PATH"; CLX_CATALOG="$cat" CLX_PRESETS="$pf" clx >"$out/quick_stdout" 2>/dev/null )
+  assert_eq "quick_exit" "$?" "0"
+  assert_eq "quick_model" "$([[ "$(cat "$out/argv")" == *"--model claude-sonnet-4-6"* ]] && echo yes)" "yes"
+  assert_eq "quick_skills" "$([[ "$(cat "$out/argv")" == *"--plugin-dir"* ]] && echo yes)" "yes"
+  assert_eq "quick_effort" "$([[ "$(cat "$out/argv")" == *"--effort high"* ]] && echo yes)" "yes"
+  assert_eq "quick_preset_unchanged" "$(cat "$pf")" "$before_quick"
+  assert_eq "quick_only_four_menus" "$(wc -l < "$out/quick_menus" | tr -d ' ')" "4"
+  assert_json_eq "quick_mcp_preserved" "$(jq -c '.mcpServers|keys' "$out/m.json")" '["playwright"]'
+
   # --- SAVE: blank -> menus -> save as p2 ---
   cat > "$stub/gum" <<EOF
 #!/bin/zsh

@@ -152,7 +152,21 @@ try {
     await page.locator(".inspector .close").click();
     await page.locator("[data-mode-edit]").click();
     await page.locator("[data-main]").click();
+    assert.equal(await page.locator('.node[aria-pressed="true"]').count(), 35);
+    assert.equal(
+      await page.locator("[data-main]").getAttribute("aria-pressed"),
+      "true",
+    );
+    await page.locator("[data-main]").click();
+    assert.equal(await page.locator('.node[aria-pressed="true"]').count(), 0);
+    await page.locator("[data-main]").click();
+    await page.locator("[data-mode-view]").click();
+    await page
+      .getByRole("button", { name: "Save & continue", exact: true })
+      .click();
+    await page.locator("[data-main]").click();
     await page.locator("[data-mode=full]").click();
+    await page.locator("[data-mode-edit]").click();
     await page.locator("[data-action=save]").click();
     await page.waitForFunction(
       () => !document.querySelector("#clx-atlas").inert,
@@ -448,6 +462,67 @@ try {
     await page.close();
     console.log(
       `${width}: shared presets, profile create/switch/delete, dirty-edit discard and compatibility consent passed`,
+    );
+  }
+  for (const width of [1280, 390]) {
+    const page = await browser.newPage({ viewport: { width, height: 860 } });
+    await page.route("**/api/state", (route) =>
+      route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: '{"error":"No catalog"}',
+      }),
+    );
+    await page.route("**/api/profiles", (route) =>
+      route.fulfill({
+        status: 404,
+        contentType: "application/json",
+        body: '{"error":"Unknown CLX endpoint."}',
+      }),
+    );
+    await page.route("**/api/setup", (route) =>
+      route.fulfill({
+        status: 404,
+        contentType: "application/json",
+        body: '{"error":"Unknown CLX endpoint."}',
+      }),
+    );
+    await page.goto(url);
+    const scan = page.getByRole("button", {
+      name: "Scan this folder",
+      exact: true,
+    });
+    await page.waitForFunction(() =>
+      document
+        .querySelector("[data-setup-error]")
+        ?.textContent.includes("different versions"),
+    );
+    assert.equal(await scan.isEnabled(), true);
+    await page
+      .getByLabel("Claude configuration folder", { exact: true })
+      .fill("/path/to/customer's profile");
+    assert(
+      (await page.locator("[data-setup-command]").textContent()).includes(
+        "--claude-config-dir",
+      ),
+    );
+    await scan.click();
+    await page.waitForFunction(
+      () =>
+        !document.querySelector('[data-setup-form] [type="submit"]').disabled,
+    );
+    await page.screenshot({ path: `/tmp/clx-setup-recovery-${width}.png` });
+    await page.unroute("**/api/setup");
+    await page
+      .getByRole("button", { name: "Retry connection", exact: true })
+      .click();
+    await page.waitForFunction(
+      () => document.querySelector(".setup-recovery").hidden,
+    );
+    assert.equal(await scan.isEnabled(), true);
+    await page.close();
+    console.log(
+      `${width}: old-server setup recovery, editable path and retry passed`,
     );
   }
 } finally {
