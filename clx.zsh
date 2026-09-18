@@ -376,7 +376,7 @@ clx() {
   prompt_file=$(mktemp "${TMPDIR:-/tmp}/clx-prompt-XXXXXX")
   trap 'rm -rf "$mcp_file" "$settings_file" "$synth_root" "$prompt_file"' EXIT INT TERM
 
-  local model_id effort="" preset="" asis=0 choice action bj sys_prompt=""
+  local model_id effort="" preset="" asis=0 quick_model=0 choice action bj sys_prompt=""
   local -a enabled_ids plugin_dir_args mcp_names
   local i n_sp pid pname sentinel mode pdir raw_labels
   local -a labels dirs presel sel_flags bases
@@ -414,7 +414,7 @@ clx() {
     choice=$(print -rl -- "— start blank —" "${pdisplay[@]}" | gum choose --header "Preset:") || return 1
     [[ "$choice" == "— start blank —" ]] && { preset=""; break; }
     choice="${choice%%  ·  *}"
-    action=$(print -rl -- "use as-is" "customize" "delete" | gum choose --header "Preset '$choice':") || return 1
+    action=$(print -rl -- "use as-is" "model and effort only (this launch)" "customize" "delete" | gum choose --header "Preset '$choice':") || return 1
     if [[ "$action" == "delete" ]]; then
       if gum confirm --default=false "Delete '$choice'?"; then _clx_delete_preset "$presets_file" "$choice"; fi
       pnames=("${(@f)$(_clx_preset_names "$presets_file")}"); pnames=("${(@)pnames:#}")
@@ -422,6 +422,7 @@ clx() {
     fi
     preset="$choice"
     [[ "$action" == "use as-is" ]] && asis=1
+    [[ "$action" == "model and effort only (this launch)" ]] && { asis=1; quick_model=1; }
     break
   done
 
@@ -442,6 +443,15 @@ clx() {
     model_id=$(_clx_preset_model "$presets_file" "$preset")
     [[ -z "$model_id" ]] && model_id=$(_clx_model_default "$catalog")
     effort=$(_clx_preset_effort "$presets_file" "$preset")
+    if (( quick_model )); then
+      local quick_label quick_seed
+      quick_seed=$(jq -r --arg id "$model_id" '.models[] | select(.id==$id) | .label' "$catalog")
+      quick_label=$(jq -r '.models[].label' "$catalog" | gum choose --header "Model (this launch only):" --selected "$quick_seed") || return 1
+      model_id=$(jq -r --arg label "$quick_label" '.models[] | select(.label==$label) | .id' "$catalog")
+      effort=$(print -rl -- "(default)" low medium high xhigh max | gum choose --header "Effort (this launch only):" --selected "${effort:-"(default)"}") || return 1
+      [[ "$effort" == "(default)" ]] && effort=""
+      print -r -- "Using temporary model and effort. Saved preset is unchanged."
+    fi
     for (( i=0; i<n_sp; i++ )); do
       pid=$(jq -r ".skillPlugins[$i].id" "$catalog")
       pname=$(jq -r ".skillPlugins[$i].name" "$catalog")
