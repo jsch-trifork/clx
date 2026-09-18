@@ -554,7 +554,7 @@ button:disabled {
   color: #211a33;
   font-weight: 600;
 }
-#clx-atlas .new-preset:hover {
+#clx-atlas .control.new-preset:hover {
   background: #e6ddfc;
   border-color: #e6ddfc;
 }
