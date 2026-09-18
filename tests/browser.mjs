@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
+import { Profiles } from "../src/profiles.mjs";
 import { initializeCatalog } from "../src/setup.mjs";
 import { startServer } from "../src/server.mjs";
 
@@ -49,10 +50,21 @@ const initial = {
   },
 };
 await writeFile(presetsFile, JSON.stringify(initial));
+const profiles = new Profiles(dir, catalogFile);
+let launches = 0;
 const { server, url } = await startServer({
   catalogFile,
   presetsFile,
-  onLaunch: async () => {},
+  getCatalogFile: () => profiles.catalog(),
+  onProfiles: async (request) =>
+    !request
+      ? profiles.list()
+      : request.operation === "select"
+        ? profiles.select(request.id)
+        : profiles.mutate(request),
+  onLaunch: async () => {
+    launches++;
+  },
   onSetup: async (request) => {
     if (request) await initializeCatalog(catalogFile, request.directory, true);
     return { directory: join(dir, "alternate profile") };
@@ -323,6 +335,119 @@ try {
     await page.close();
     console.log(
       `${width}: missing catalog, invalid folder, alternate profile scan, restart and Cancel passed`,
+    );
+  }
+  const emptyProfile = join(dir, "Customer B");
+  await mkdir(emptyProfile);
+  await writeFile(join(emptyProfile, "settings.json"), "{}");
+  const shared = {
+    Shared: {
+      model: "sonnet",
+      skillPlugins: { "custom@test": { mode: "full" } },
+      mcp: [],
+      otherPlugins: [],
+    },
+  };
+  for (const width of [1280, 390]) {
+    await rm(profiles.file, { force: true });
+    profiles.activeId = "default";
+    await writeFile(presetsFile, JSON.stringify(shared));
+    const page = await browser.newPage({ viewport: { width, height: 860 } });
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    await page.goto(url);
+    await page.locator(".overview-family").first().waitFor();
+    await page
+      .getByRole("button", { name: "Choose Claude profile", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Add profile", exact: true })
+      .click();
+    await page.getByLabel("Profile name", { exact: true }).fill("Customer B");
+    await page
+      .getByLabel("Claude configuration folder", { exact: true })
+      .fill(emptyProfile);
+    await page.screenshot({ path: `/tmp/clx-profile-form-${width}.png` });
+    await page
+      .getByRole("button", { name: "Save profile", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Customer B", exact: true }).click();
+    await page.waitForFunction(() =>
+      document
+        .querySelector("[data-action=profiles]")
+        .textContent.includes("Customer B"),
+    );
+    assert.equal(await page.locator(".overview-node").count(), 0);
+    assert(
+      await page
+        .locator(".preset-picker")
+        .textContent()
+        .then((t) => t.includes("Shared")),
+    );
+    await page.locator("[data-action=options]").click();
+    await page.locator("[data-launch]").click();
+    await page
+      .getByRole("button", { name: "Continue without these", exact: true })
+      .waitFor();
+    assert(
+      await page
+        .locator(".menu")
+        .textContent()
+        .then((t) => t.includes("custom@test")),
+    );
+    const before = launches;
+    await page
+      .getByRole("button", { name: "Continue without these", exact: true })
+      .click();
+    await page.waitForFunction(() =>
+      document
+        .querySelector(".notice")
+        .textContent.includes("Session launched"),
+    );
+    assert.equal(launches, before + 1);
+    assert.deepEqual(JSON.parse(await readFile(presetsFile)), shared);
+    await page
+      .getByRole("button", { name: "Choose Claude profile", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Default", exact: true }).click();
+    await page.locator(".overview-family").first().waitFor();
+    await page.locator("[data-mode-edit]").click();
+    await page.locator(".overview-node").first().click();
+    await page
+      .getByRole("button", { name: "Choose Claude profile", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Discard", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Edit Customer B", exact: true })
+      .waitFor();
+    assert.equal(
+      await page.locator('.overview-node[data-change="removed"]').count(),
+      0,
+    );
+    assert.equal(await page.locator("[data-action=save]").isDisabled(), true);
+    await page.screenshot({ path: `/tmp/clx-profile-chooser-${width}.png` });
+    await page
+      .getByRole("button", { name: "Edit Customer B", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Delete profile", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Confirm delete profile", exact: true })
+      .click();
+    await page.waitForFunction(
+      () => !document.querySelector('[aria-label="Edit Customer B"]'),
+    );
+    assert.deepEqual(JSON.parse(await readFile(presetsFile)), shared);
+    assert.deepEqual(errors, []);
+    assert(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    );
+    await page.close();
+    console.log(
+      `${width}: shared presets, profile create/switch/delete, dirty-edit discard and compatibility consent passed`,
     );
   }
 } finally {

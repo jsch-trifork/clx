@@ -77,22 +77,44 @@ To update, download the latest archive and run the install command again. Your l
 
 With no plugins, the interface starts with an empty constellation. You can still create presets for a model or configured integrations. Install plugins and run `clx init --force`, then reload the UI, to populate the map. Loose skills in `~/.claude/skills` or project folders are outside CLX's plugin selection controls and may still load through Claude Code itself.
 
-## Using a different Claude configuration folder
+## Claude profiles and shared presets
 
-If you have multiple Claude profiles, choose the **configuration folder containing `settings.json` and `plugins/`**, not the folder containing the Claude executable.
+A **profile** chooses the Claude configuration folder and executable. A **preset** chooses skills, model, and integrations. Presets are shared: use the same Investigate or Design preset for different customers without copying it.
 
-When setup cannot load your catalog, the UI shows a **Claude configuration folder** field. Paste your folder path and click **Scan this folder**. If the UI opens but your skills are missing, choose **Choose Claude folder** on the empty screen, or **Claude configuration folder** in the preset menu. The field starts with your saved location, `CLAUDE_CONFIG_DIR`, or `~/.claude`.
+In `clx ui`, use the profile selector at the top, then **Add profile**. Give it a name, the configuration folder containing `settings.json` and `plugins/`, and either `claude` (found on `PATH`) or an absolute executable path. CLX scans the folder when you save. Existing installations appear as **Default**, keeping their catalog and presets.
 
-You can also configure it from the terminal:
+For an alias such as:
+
+```sh
+alias claude-customer='CLAUDE_CONFIG_DIR=/path/to/customer/claude /path/to/bin/claude'
+```
+
+Create a profile named **Customer A**, with `/path/to/customer/claude` as its configuration folder and `/path/to/bin/claude` as its executable. Enter the two paths separately; do not paste a shell alias or command into the executable field.
+
+- Run `clx`: with multiple profiles, choose the profile first, then a shared preset. A single profile skips the profile prompt.
+- Run `clx ui`: choose a profile in the UI and switch with the selector. Save or discard unsaved preset edits before switching.
+- Choose explicitly in scripts or shortcuts:
+
+  ```sh
+  clx --profile "Customer A" "Investigate"
+  clx ui --profile "Customer A"
+  clx init --profile "Customer A" --force
+  ```
+
+A preset may reference skills or integrations absent from a profile. CLX lists them before launch and requires an explicit choice to continue without them. The UI also offers choosing another profile. This does not rewrite the saved preset. Matching uses plugin IDs and skill directory names, not labels. Whole-plugin selections use that profile's installed version and contents.
+
+Profile changes are local to each running CLX UI session. Editing or deleting a profile does not delete its Claude configuration, credentials, or shared presets. Switch away from a profile before deleting it; at least one profile must remain.
+
+### Initial setup or a different configuration folder
+
+If no catalog is available, the UI offers a **Claude configuration folder** field and **Scan this folder**. For an empty skill map, use **Choose Claude folder**; you can also change the current profile's folder from the preset menu. CLX uses the saved location, `CLAUDE_CONFIG_DIR`, or `~/.claude` as its starting point.
 
 ```sh
 clx init --claude-config-dir "/path/to/claude-work" --force
 clx ui
 ```
 
-CLX saves the selected folder in your local catalog and uses it for launched Claude sessions. Later scans reuse it when `CLAUDE_CONFIG_DIR` is not set; an explicit CLI folder or `CLAUDE_CONFIG_DIR` can select a different profile during initialization. CLX reads that profile's settings, plugin registry/cache, and `.claude.json` for MCP discovery. It does not copy credentials or change the profile's files. Existing presets remain saved, although skills absent from the selected profile may be unavailable.
-
-`--config-dir` still means **where CLX stores its own catalog and presets**; it is separate from `--claude-config-dir`. Use separate CLX directories if you want separate preset libraries for your profiles. Folder selection does not switch Claude executables; the launcher uses `claude` from your terminal's `PATH`.
+`--config-dir` means **where CLX stores its own shared presets and profiles**; `--claude-config-dir` means **which Claude configuration to discover**. Custom profiles read their own `.claude.json` for MCP discovery. The default `~/.claude` profile retains the usual `~/.claude.json` location. CLX does not copy credentials or change profile configuration files.
 
 ## Using the UI
 
@@ -114,7 +136,9 @@ CLX defaults to `~/.claude/clx` **on the current user's machine**:
 | File | Purpose |
 | --- | --- |
 | `loadout.json` | Discovered plugin paths, model aliases, and local MCP configuration |
-| `presets.json` | Your saved presets |
+| `presets.json` | Saved presets shared across all profiles |
+| `profiles.json` | Local profile names, configuration folders, and executable paths |
+| `profile-catalogs/` | Discovered catalog for each additional profile |
 | `prompts/` | Your optional prompt files |
 | `.preset-backups/` | Last 20 versions written by the UI |
 

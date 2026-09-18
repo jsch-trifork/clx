@@ -1078,3 +1078,41 @@ button:disabled {
 #clx-atlas .load-state .primary:disabled {
   opacity: 0.55;
 }
+
+#clx-atlas .profile-picker {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 1px solid #82758f;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+#clx-atlas .profile-row {
+  display: flex;
+  gap: 12px;
+  margin: 10px 0;
+  align-items: center;
+}
+#clx-atlas .profile-row .control {
+  flex: 1;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+#clx-atlas [data-profile-list] {
+  width: min(520px, 100%);
+}
+#clx-atlas [data-profile-error] {
+  color: #f0b6bc;
+}
+#clx-atlas .load-state:has([data-profile-form]) {
+  justify-content: flex-start;
+}
+@media (max-width: 600px) {
+  #clx-atlas .profile-picker {
+    max-width: 105px;
+  }
+  #clx-atlas .chrome:has(.profile-picker:not([hidden])) .wordmark {
+    display: none;
+  }
+}

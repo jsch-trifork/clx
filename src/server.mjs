@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { resolve, extname, sep } from "node:path";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { compatibility } from "./compatibility.mjs";
 import { readCatalog } from "./catalog.mjs";
 import {
   readPresets,
@@ -24,8 +25,11 @@ export async function startServer({
   port = 0,
   onLaunch,
   onSetup,
+  onProfiles,
+  getCatalogFile = () => catalogFile,
 }) {
   const token = randomBytes(32).toString("hex");
+  let mutationBusy = false;
   const server = http.createServer(async (req, res) => {
     const origin = `http://127.0.0.1:${server.address().port}`;
     res.setHeader("Cache-Control", "no-store");
@@ -39,6 +43,7 @@ export async function startServer({
       res.writeHead(code, { "Content-Type": "application/json" });
       res.end(JSON.stringify(value));
     };
+    let ownsMutation = false;
     try {
       if (
         req.headers.host !== `127.0.0.1:${server.address().port}` ||
@@ -61,6 +66,10 @@ export async function startServer({
             error:
               "Open the authenticated URL printed by clx ui in your terminal.",
           });
+        if (req.method === "GET" && url.pathname === "/api/profiles") {
+          if (!onProfiles) return json(200, { profiles: [], activeId: null });
+          return json(200, await onProfiles());
+        }
         if (req.method === "GET" && url.pathname === "/api/setup") {
           if (!onSetup)
             throw new StoreError(
@@ -70,17 +79,23 @@ export async function startServer({
           return json(200, await onSetup());
         }
         if (req.method === "GET" && url.pathname === "/api/state") {
-          const catalog = await readCatalog(catalogFile),
+          const catalog = await readCatalog(getCatalogFile()),
             snapshot = await readPresets(presetsFile);
           return json(200, {
             ...catalog,
             presets: publicPresets(snapshot.records),
             revision: snapshot.revision,
+            profile: onProfiles ? await onProfiles() : null,
           });
         }
         if (
           req.method === "POST" &&
-          ["/api/presets", "/api/launch", "/api/setup"].includes(url.pathname)
+          [
+            "/api/presets",
+            "/api/launch",
+            "/api/setup",
+            "/api/profiles",
+          ].includes(url.pathname)
         ) {
           if (req.headers["content-type"]?.split(";")[0] !== "application/json")
             return json(415, { error: "Expected JSON." });
@@ -98,6 +113,27 @@ export async function startServer({
           } catch {
             throw new StoreError("Invalid JSON.");
           }
+          if (mutationBusy)
+            throw new StoreError(
+              "Another change is in progress. Try again shortly.",
+              409,
+            );
+          mutationBusy = true;
+          ownsMutation = true;
+          if (url.pathname === "/api/profiles") {
+            if (!onProfiles)
+              throw new StoreError("Profiles are unavailable.", 503);
+            return json(200, await onProfiles(request));
+          }
+          if (
+            onProfiles &&
+            ["/api/presets", "/api/launch"].includes(url.pathname) &&
+            request.profileId !== (await onProfiles()).activeId
+          )
+            throw new StoreError(
+              "The active profile changed. Reload before continuing.",
+              409,
+            );
           if (url.pathname === "/api/setup") {
             if (!onSetup)
               throw new StoreError(
@@ -130,13 +166,23 @@ export async function startServer({
                 "Launch is not available in this server.",
                 503,
               );
-            await onLaunch(request.name);
+            const missing = compatibility(
+              records[request.name],
+              await readCatalog(getCatalogFile()),
+            );
+            if (missing.length && request.allowMissing !== true)
+              return json(409, {
+                error:
+                  "This preset has unavailable selections in the current profile.",
+                missing,
+              });
+            await onLaunch(request.name, request);
             return json(200, { launched: true });
           }
           const snapshot = await mutatePresets(
             presetsFile,
             request,
-            await readCatalog(catalogFile),
+            await readCatalog(getCatalogFile()),
           );
           return json(200, {
             presets: publicPresets(snapshot.records),
@@ -168,6 +214,8 @@ export async function startServer({
       json(error.status || 500, {
         error: error.message || "CLX could not complete the operation.",
       });
+    } finally {
+      if (ownsMutation) mutationBusy = false;
     }
   });
   server.requestTimeout = 15000;

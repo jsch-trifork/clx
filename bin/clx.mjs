@@ -6,11 +6,56 @@ import { fileURLToPath } from "node:url";
 import { parseArgs, promisify } from "node:util";
 import { StoreError } from "../src/store.mjs";
 import { initializeCatalog, setupLocation } from "../src/setup.mjs";
+import { Profiles } from "../src/profiles.mjs";
 import { startServer } from "../src/server.mjs";
 
 const appDir = fileURLToPath(new URL("../", import.meta.url));
 const args = process.argv.slice(2);
-const help = `CLX — Claude Code launcher and skill constellation\n\n  clx ui [--no-open] [--port 0] [--config-dir PATH]\n  clx init [--force] [--config-dir PATH] [--claude-config-dir PATH]\n  clx [preset name]    Launch Claude in this terminal\n\nUI saves use the same presets.json as the terminal launcher.\nRequires Node 20+. Terminal launch/discovery also needs zsh, jq, gum and Claude Code.\nConfig: CLX_DIR, CLX_CATALOG, CLX_PRESETS; default ~/.claude/clx.\n`;
+let profileChoice;
+const profileFlag = args.indexOf("--profile");
+if (profileFlag >= 0) {
+  profileChoice = args[profileFlag + 1];
+  if (!profileChoice || profileChoice.startsWith("--")) {
+    console.error("clx: --profile needs a profile name");
+    process.exit(1);
+  }
+  args.splice(profileFlag, 2);
+}
+async function chooseProfile(manager) {
+  const state = await manager.list();
+  if (profileChoice) return manager.select(profileChoice);
+  if (state.profiles.length < 2) {
+    manager.activeId = state.profiles[0].id;
+    return;
+  }
+  if (!process.stdin.isTTY)
+    throw new Error(
+      "Multiple Claude profiles are configured. Use --profile NAME, or choose in clx ui.",
+    );
+  const name = await new Promise((resolve, reject) => {
+    const child = spawn(
+      "gum",
+      [
+        "choose",
+        "--header",
+        "Claude profile:",
+        "--",
+        ...state.profiles.map((p) => p.name),
+      ],
+      { stdio: ["inherit", "pipe", "inherit"] },
+    );
+    let output = "";
+    child.stdout.on("data", (chunk) => (output += chunk));
+    child.on("error", reject);
+    child.on("close", (code) =>
+      code === 0
+        ? resolve(output.trim())
+        : reject(new Error("Profile selection cancelled.")),
+    );
+  });
+  await manager.select(name);
+}
+const help = `CLX — Claude Code launcher and skill constellation\n\n  clx ui [--no-open] [--port 0] [--config-dir PATH]\n  clx init [--force] [--config-dir PATH] [--claude-config-dir PATH]\n  clx [--profile NAME] [preset name]    Launch Claude in this terminal\n\nUI saves use the same presets.json as the terminal launcher.\nRequires Node 20+. Terminal launch/discovery also needs zsh, jq, gum and Claude Code.\nConfig: CLX_DIR, CLX_CATALOG, CLX_PRESETS; default ~/.claude/clx.\n`;
 function run(command, argv, env = process.env) {
   const child = spawn(command, argv, { stdio: "inherit", env });
   child.on("error", (e) => {
@@ -42,13 +87,35 @@ try {
     );
     const catalogFile = process.env.CLX_CATALOG || join(dir, "loadout.json");
     const presetsFile = process.env.CLX_PRESETS || join(dir, "presets.json");
+    const profiles = new Profiles(dir, catalogFile);
+    profiles.activeId = (await profiles.list()).profiles[0].id;
+    if (profileChoice) {
+      if (command === "init") {
+        const selected = (await profiles.list()).profiles.find(
+          (p) => p.id === profileChoice || p.name === profileChoice,
+        );
+        if (!selected) throw new Error("Choose an existing Claude profile.");
+        profiles.activeId = selected.id;
+      } else await profiles.select(profileChoice);
+    }
     if (command === "init") {
       await initializeCatalog(
-        catalogFile,
-        values["claude-config-dir"],
+        profiles.catalog(),
+        values["claude-config-dir"] ||
+          (profileChoice ? (await profiles.current()).directory : undefined),
         values.force,
       );
-      console.log(`CLX catalog ready: ${catalogFile}`);
+      const state = await profiles.list();
+      if (state.persisted) {
+        const current = await profiles.current();
+        await profiles.mutate({
+          operation: "update",
+          ...current,
+          directory: (await setupLocation(profiles.catalog())).directory,
+          revision: state.revision,
+        });
+      }
+      console.log(`CLX catalog ready: ${profiles.catalog()}`);
     } else {
       const port = Number(values.port);
       if (!Number.isInteger(port) || port < 0 || port > 65535)
@@ -61,6 +128,27 @@ try {
         scanning = false;
       const { server, url } = await startServer({
         catalogFile,
+        getCatalogFile: () => profiles.catalog(),
+        onProfiles: async (request) => {
+          if (!request)
+            return {
+              ...(await profiles.list()),
+              chosen: Boolean(profileChoice),
+            };
+          if (running || scanning)
+            throw new StoreError(
+              "Finish the current session or scan before changing profiles.",
+              409,
+            );
+          scanning = true;
+          try {
+            return request.operation === "select"
+              ? await profiles.select(request.id)
+              : await profiles.mutate(request);
+          } finally {
+            scanning = false;
+          }
+        },
         presetsFile,
         port,
         onSetup: async (request) => {
@@ -77,14 +165,28 @@ try {
               );
             scanning = true;
             try {
-              await initializeCatalog(catalogFile, request.directory, true);
+              const state = await profiles.list();
+              const current = await profiles.current();
+              await profiles.mutate({
+                operation: "update",
+                ...current,
+                directory: request.directory,
+                revision: state.revision,
+              });
             } finally {
               scanning = false;
             }
           }
-          return setupLocation(catalogFile);
+          return { directory: (await profiles.current()).directory };
         },
-        onLaunch: async (name) => {
+        onLaunch: async (name, launchRequest = {}) => {
+          await profiles.verifyCatalog();
+          const active = await profiles.current();
+          if (launchRequest.profileId !== active.id)
+            throw new StoreError(
+              "The profile changed. Reload before launching.",
+              409,
+            );
           if (scanning)
             throw new StoreError(
               "Wait for the folder scan to finish before launching.",
@@ -99,7 +201,9 @@ try {
           try {
             await promisify(execFile)("zsh", [
               "-c",
-              'for dependency in gum jq claude; do command -v "$dependency" >/dev/null || { print -ru2 -- "Missing dependency: $dependency"; exit 1; }; done',
+              'for dependency in gum jq "$1"; do command -v "$dependency" >/dev/null || { print -ru2 -- "Missing dependency: $dependency"; exit 1; }; done',
+              "clx",
+              active.executable,
             ]);
           } catch (error) {
             running = false;
@@ -123,7 +227,11 @@ try {
               env: {
                 ...process.env,
                 CLX_DIR: dir,
-                CLX_CATALOG: catalogFile,
+                CLX_CATALOG: profiles.catalog(),
+                CLX_CLAUDE_BIN: active.executable,
+                CLX_PROFILE_READY: "1",
+                CLX_ALLOW_MISSING:
+                  launchRequest.allowMissing === true ? "1" : "",
                 CLX_PRESETS: presetsFile,
                 CLX_BOOTSTRAP:
                   process.env.CLX_BOOTSTRAP || join(appDir, "bootstrap.zsh"),
@@ -170,6 +278,14 @@ try {
         });
     }
   } else {
+    const dir = resolve(process.env.CLX_DIR || join(homedir(), ".claude/clx"));
+    const profiles = new Profiles(
+      dir,
+      process.env.CLX_CATALOG || join(dir, "loadout.json"),
+    );
+    if (args[0] !== "prompts") await chooseProfile(profiles);
+    if (args[0] !== "prompts") await profiles.verifyCatalog();
+    const active = await profiles.current();
     run(
       "zsh",
       [
@@ -181,6 +297,9 @@ try {
       ],
       {
         ...process.env,
+        CLX_PROFILE_READY: "1",
+        CLX_CLAUDE_BIN: active.executable,
+        CLX_CATALOG: profiles.catalog(),
         CLX_BOOTSTRAP:
           process.env.CLX_BOOTSTRAP || join(appDir, "bootstrap.zsh"),
       },

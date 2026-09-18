@@ -16,7 +16,14 @@
       <canvas class="core-motion" aria-hidden="true"></canvas>
       <div class="nodes"></div>
       <header class="chrome" hidden>
-        <span class="wordmark">clx</span
+        <button
+          class="plain profile-picker"
+          data-action="profiles"
+          aria-label="Choose Claude profile"
+          hidden
+        >
+          Default</button
+        ><span class="wordmark">clx</span
         ><button class="plain" data-action="families">Skills</button
         ><span class="trail">/ &nbsp; All families</span>
         <div
@@ -68,7 +75,7 @@
         aria-label="Skill details"
       ></section>
       <div class="notice" aria-live="polite"></div>
-      <div class="load-state" role="status">
+      <div class="load-state" role="region" aria-label="Claude setup">
         Reading your CLX configuration…
       </div>
       <span class="sr" aria-live="polite" id="clx-announcement"></span>
