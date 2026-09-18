@@ -4,11 +4,42 @@ A local visual interface and terminal launcher for choosing Claude Code skills, 
 
 **Bring your own Claude Code installation and plugins.** CLX contains no bundled skill library, personal presets, prompts, credentials, or hosted account. Your first preset library is empty.
 
-## Install
+## Prerequisites
 
-Requirements: **Node.js 20+**, **zsh**, **jq**, **gum**, and an installed, authenticated **Claude Code** CLI. Supported environments are macOS and Linux; use WSL on Windows. The browser UI is local and requires the terminal process to stay running.
+Install these tools before using CLX:
 
-On macOS, install the shell dependencies with `brew install zsh jq gum`. On Linux, install zsh and jq through your distribution and follow [gum's installation instructions](https://github.com/charmbracelet/gum#installation). Install and sign into [Claude Code](https://code.claude.com/docs/en/setup) separately.
+| Requirement | What it is needed for | Check in your terminal |
+| --- | --- | --- |
+| **Node.js 20 or newer and npm** | Installing CLX and running the local UI | `node --version` and `npm --version` |
+| **zsh** | Discovering your configuration and running the launcher | `zsh --version` |
+| **jq** | Reading and updating the launcher's JSON configuration | `jq --version` |
+| **gum** | The terminal preset picker and launcher controls | `gum --version` |
+| **Claude Code CLI, installed and signed in** | Starting Claude sessions with your chosen preset | `claude --version`, then run `claude` to complete sign-in if needed |
+| **A web browser** | Viewing and editing presets in the constellation UI | Open the local URL printed by `clx ui` |
+
+**Supported environments:** macOS and Linux. On Windows, install and run the tools inside **WSL**. Keep the terminal running while using the browser UI.
+
+### Set up the tools
+
+- Install [Node.js with npm](https://nodejs.org/en/download), version 20 or newer.
+- On **macOS**, if you use Homebrew, install the shell tools with:
+
+  ```sh
+  brew install zsh jq gum
+  ```
+
+- On **Linux or WSL**, install `zsh` and `jq` through your distribution's package manager, then follow [gum's installation instructions](https://github.com/charmbracelet/gum#installation).
+- Install and sign into [Claude Code](https://code.claude.com/docs/en/setup) with your own account or provider configuration.
+
+Run the checks above in the same terminal where you will run CLX. Each command must be available on your `PATH`; a “command not found” message means that tool still needs installation or shell configuration.
+
+### Optional: skills and integrations
+
+**You do not need existing presets to start.** CLX opens with an empty preset library and lets you create your first preset in the UI.
+
+Install your own skill-bearing Claude Code plugins if you want skills to appear in the constellation. CLX does not bundle or install plugins; without them, you can still create a model-only preset. MCP servers are optional and require their own setup if you use them. **Git is only required if you choose the source installation below.**
+
+## Install CLX
 
 Download the `.tgz` archive from the [latest release](https://github.com/jsch-trifork/clx/releases/latest). In a directory containing only that CLX archive, run:
 
