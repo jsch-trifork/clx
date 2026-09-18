@@ -1207,3 +1207,8 @@ button:disabled {
 #clx-atlas:has(.load-state:not([hidden])) .update-status {
   display: none;
 }
+
+#clx-atlas .overview-family[data-face="bottom"] .caption {
+  top: auto;
+  bottom: calc(100% + 10px);
+}

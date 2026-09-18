@@ -318,6 +318,95 @@ try {
       );
     }
   }
+  // A collection larger than the original six must occupy all sides without
+  // overlapping hub labels, and every group must remain reachable by keyboard.
+  const savedCatalog = await readFile(catalogFile);
+  const savedPresets = await readFile(presetsFile);
+  const manyFamilies = Array.from({ length: 18 }, (_, i) => ({
+    ...families[i % families.length],
+    id: `collection-${i}@test`,
+    name: `Skillset ${i + 1}`,
+  }));
+  await writeFile(
+    catalogFile,
+    JSON.stringify({
+      models: [{ id: "sonnet", label: "Sonnet" }],
+      skillPlugins: manyFamilies,
+      otherPlugins: [],
+      mcpServers: {},
+    }),
+  );
+  await writeFile(
+    presetsFile,
+    JSON.stringify({
+      Existing: {
+        model: "sonnet",
+        skillPlugins: {},
+        otherPlugins: [],
+        mcp: [],
+      },
+    }),
+  );
+  for (const width of [1280, 390]) {
+    const page = await browser.newPage({ viewport: { width, height: 860 } });
+    await page.goto(url);
+    await page.locator(".overview-family").first().waitFor();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const hubs = page.locator(".overview-family");
+    assert.equal(await hubs.count(), 18);
+    for (const face of ["top", "bottom", "left", "right"])
+      assert(
+        (await page.locator(`.overview-family[data-face="${face}"]`).count()) >
+          0,
+      );
+    const hubRects = await hubs.evaluateAll((items) =>
+      items.map((e) => {
+        const a = e.getBoundingClientRect(),
+          b = e.querySelector(".caption").getBoundingClientRect();
+        return {
+          left: Math.min(a.left, b.left),
+          right: Math.max(a.right, b.right),
+          top: Math.min(a.top, b.top),
+          bottom: Math.max(a.bottom, b.bottom),
+        };
+      }),
+    );
+    for (const [i, a] of hubRects.entries())
+      for (const b of hubRects.slice(i + 1))
+        assert(
+          a.right <= b.left ||
+            b.right <= a.left ||
+            a.bottom <= b.top ||
+            b.bottom <= a.top,
+          "skillset hubs or names overlap",
+        );
+    assert(
+      hubRects.some((a) => a.left >= 0 && a.right <= width),
+      "initial view must contain a complete skillset and name",
+    );
+    const palette = await hubs.evaluateAll((items) =>
+      items.map((e) => getComputedStyle(e).color),
+    );
+    assert.equal(new Set(palette).size, 18);
+    await page.screenshot({ path: `/tmp/clx-many-skillsets-${width}.png` });
+    for (const i of [0, 8, 14, 17]) {
+      await hubs.nth(i).focus();
+      const bounds = await hubs.nth(i).boundingBox();
+      assert(bounds.x >= 0 && bounds.x + bounds.width <= width);
+    }
+    await hubs.nth(14).focus();
+    await hubs.nth(14).click();
+    await page
+      .getByRole("button", { name: "Back to all skills", exact: true })
+      .click();
+    assert.equal(await hubs.count(), 18);
+    await page.close();
+    console.log(
+      `${width}: 18 skillsets, four-sided layout, distinct colors, label separation and keyboard navigation passed`,
+    );
+  }
+  await writeFile(catalogFile, savedCatalog);
+  await writeFile(presetsFile, savedPresets);
   const alternate = join(dir, "alternate profile");
   const plugin = join(
     alternate,

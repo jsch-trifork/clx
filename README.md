@@ -150,7 +150,7 @@ When choosing a preset in the terminal, **model and effort only (this launch)** 
 - **Save / Cancel:** commit your draft or restore the saved preset. Leaving with changes offers Save or Discard.
 - **Family centre:** in Edit mode, click the icon to select all skills; click again to clear them. A partial selection becomes fully selected. In View mode, the icon opens whole-plugin and skills-only options. Whole plugin includes its hooks and agents; selecting individual skills excludes those plugin extras.
 - **Preset settings:** rename, choose the model and effort, configure MCP/other plugins, or delete the preset. Deleting a preset never deletes installed skills.
-- **Navigation:** drag or use the arrows to pan. The overview remains wide on narrow screens so nodes do not overlap. Every preset appears in the scrolling bottom bar.
+- **Navigation:** drag or use the arrows to pan. Collections with more than six skillsets use the top, bottom and sides of the overview, with distinct colors and space reserved for names. Larger collections widen the map; on narrow screens it opens on a complete skillset. Every preset appears in the scrolling bottom bar.
 
 Motion respects reduced-motion preferences and pauses in hidden tabs. No fonts or scripts are fetched from a CDN.
 

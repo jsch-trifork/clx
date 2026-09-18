@@ -1,3 +1,4 @@
+import { familyLayout, familyColors } from "./overview.js";
 import { buildSkillTree } from "./geometry.js";
 import { strokeBranch } from "./curve.js";
 import { createCorePainter } from "./core.js";
@@ -257,7 +258,9 @@ import { createCorePainter } from "./core.js";
   function openBranches() {
     if (reducedMotion.matches) return;
     animateElement(canvas, [{ opacity: 0.65 }, { opacity: 1 }], 380);
-    const hub = overview ? [OX(793), OY(505)] : [X(680), Y(486)];
+    const hub = overview
+      ? [OX(overviewCenter[0]), OY(overviewCenter[1])]
+      : [X(680), Y(486)];
     layer.querySelectorAll(".node, .family").forEach((b, i) => {
       const x = parseFloat(b.style.left),
         y = parseFloat(b.style.top);
@@ -291,8 +294,8 @@ import { createCorePainter } from "./core.js";
   function paintCore(now = performance.now()) {
     if (!w || !draft) return;
     const target = {
-      x: overview ? OX(793) : X(414),
-      y: overview ? OY(505) : Y(515),
+      x: overview ? OX(overviewCenter[0]) : X(414),
+      y: overview ? OY(overviewCenter[1]) : Y(515),
       scale: overview ? (Math.max(0.8, w / 1586) * 110) / 133 : scale,
     };
     if (!corePose || reducedMotion.matches) corePose = { ...target, now };
@@ -432,7 +435,7 @@ import { createCorePainter } from "./core.js";
     return y * scale + (h - 992 * scale) / 2;
   }
   function maxPan() {
-    if (overview) return Math.max(0, 1280 - w);
+    if (overview) return Math.max(0, overviewWidth - w);
     const last = Math.max(680, ...points.map((p) => p.x));
     return Math.max(
       0,
@@ -878,7 +881,7 @@ import { createCorePainter } from "./core.js";
   }
   root.querySelector("[data-action=families]").onclick = () => {
     overview = true;
-    pan = 0;
+    pan = DATA.families.length > 6 ? overviewHome : 0;
     menu.hidden = true;
     panel.hidden = true;
     selected = null;
@@ -931,32 +934,88 @@ import { createCorePainter } from "./core.js";
   });
   let overview = true,
     overviewNodes = [],
-    overviewFamilies = [];
+    overviewFamilies = [],
+    overviewWidth = 1280,
+    overviewHome = 0,
+    overviewCenter = [793, 505],
+    overviewGeometryKey = null;
   function overviewGeometry() {
-    const positions = [
-      [450, 255],
-      [1080, 270],
-      [1230, 505],
-      [1080, 745],
-      [460, 745],
-      [310, 505],
-    ];
+    if (
+      overviewGeometryKey?.families === DATA.families &&
+      overviewGeometryKey.w === w &&
+      overviewGeometryKey.h === h
+    )
+      return;
+    const newCollection = overviewGeometryKey?.families !== DATA.families;
+    overviewGeometryKey = { families: DATA.families, w, h };
+    const layout = familyLayout(
+      DATA.families.length,
+      w,
+      h,
+      DATA.families.map((f) => f.skills.length),
+    );
+    overviewWidth = layout.width;
+    const top = layout.positions.filter((p) => p.face === "top");
+    const mobileAnchor = top.reduce(
+      (best, p) =>
+        Math.abs(p.x - layout.center[0]) < Math.abs(best.x - layout.center[0])
+          ? p
+          : best,
+      top[0] || { x: layout.center[0] },
+    );
+    const homeX =
+      w < 600 ? (mobileAnchor.x * Math.max(w, 1280)) / 1586 : overviewWidth / 2;
+    overviewHome = Math.max(0, Math.min(overviewWidth - w, homeX - w / 2));
+    pan =
+      newCollection && DATA.families.length > 6
+        ? overviewHome
+        : Math.min(pan, Math.max(0, overviewWidth - w));
+    overviewCenter = layout.center;
     overviewFamilies = DATA.families.map((f, i) => ({
       f,
       i,
-      x:
-        positions[i]?.[0] ??
-        793 + 460 * Math.cos((i / DATA.families.length) * Math.PI * 2),
-      y:
-        positions[i]?.[1] ??
-        505 + 290 * Math.sin((i / DATA.families.length) * Math.PI * 2),
+      ...layout.positions[i],
       color: colors[i],
     }));
     overviewNodes = [];
     overviewFamilies.forEach((g) => {
+      if (DATA.families.length > 6) {
+        const os = Math.max(w, 1280) / 1586;
+        const vertical = g.face === "top" || g.face === "bottom";
+        const sign = g.face === "top" || g.face === "left" ? -1 : 1;
+        const hubY = OY(g.y);
+        const available = vertical
+          ? sign < 0
+            ? hubY - 55 - 145
+            : h - 155 - hubY - 55
+          : 140;
+        const levels = Math.max(1, Math.floor(available / 27) + 1);
+        const branches = Math.ceil(g.f.skills.length / levels);
+        g.branches = [];
+        for (let k = 0; k < branches; k++) {
+          const chain = [];
+          for (let j = 0; j < levels; j++) {
+            const skill = g.f.skills[k * levels + j];
+            if (!skill) break;
+            const reach = (vertical ? 55 : 160) + j * 27;
+            const spread = (k - (branches - 1) / 2) * 27;
+            const p = {
+              s: skill,
+              family: g.i,
+              branch: k,
+              x: g.x + (vertical ? spread : sign * reach) / os,
+              y: g.y + (vertical ? sign * reach : spread) / os,
+            };
+            chain.push(p);
+            overviewNodes.push(p);
+          }
+          g.branches.push(chain);
+        }
+        return;
+      }
       const count = g.f.skills.length,
         branches = Math.min(5, Math.ceil(count / 4)),
-        direction = g.x < 793 ? -1 : 1;
+        direction = g.x < overviewCenter[0] ? -1 : 1;
       g.branches = [];
       for (let k = 0; k < branches; k++) {
         let chain = [];
@@ -971,14 +1030,14 @@ import { createCorePainter } from "./core.js";
               (0.78 + rnd(k + g.i * 37) * 0.23) +
             (rnd(index + 61) - 0.5) * 20;
           const spread = (k - (branches - 1) / 2) * (g.i === 1 ? 45 : 38);
+          const offset =
+            spread * (0.3 + (j + 1) / branchCount) +
+            (rnd(index + g.i * 81) - 0.5) * 34;
           const p = {
             s: g.f.skills[index],
             family: g.i,
             x: g.x + direction * reach,
-            y:
-              g.y +
-              spread * (0.3 + (j + 1) / branchCount) +
-              (rnd(index + g.i * 81) - 0.5) * 34,
+            y: g.y + offset,
             branch: k,
           };
           chain.push(p);
@@ -987,6 +1046,7 @@ import { createCorePainter } from "./core.js";
         g.branches.push(chain);
       }
     });
+    if (DATA.families.length > 6) return;
     const nodes = overviewNodes.map((p) => ({
       p,
       x: OX(p.x) + pan,
@@ -996,6 +1056,7 @@ import { createCorePainter } from "./core.js";
     const hubs = overviewFamilies.map((g) => ({
       x: OX(g.x) + pan,
       y: OY(g.y),
+      captionOffset: g.face === "bottom" ? -24 : 24,
     }));
     for (let pass = 0; pass < 180; pass++) {
       for (let i = 0; i < nodes.length; i++) {
@@ -1019,19 +1080,19 @@ import { createCorePainter } from "./core.js";
           }
         }
         for (const hub of hubs) {
-          // Reserve the family ring and its title below it.
+          // Reserve the family ring and its title on the inward-facing side.
           const dx = a.x - hub.x,
-            dy = a.y - (hub.y + 24);
+            dy = a.y - (hub.y + hub.captionOffset);
           const rx = 85,
             ry = 108;
           const d = Math.hypot(dx / rx, dy / ry);
           if (d < 1) {
             const safe = Math.max(d, 0.01);
             a.x = hub.x + dx / safe;
-            a.y = hub.y + 24 + dy / safe;
+            a.y = hub.y + hub.captionOffset + dy / safe;
           }
         }
-        a.x = Math.max(20, Math.min(Math.max(w, 1280) - 20, a.x));
+        a.x = Math.max(20, Math.min(overviewWidth - 20, a.x));
         a.y = Math.max(145, Math.min(h - 155, a.y));
       }
     }
@@ -1063,6 +1124,7 @@ import { createCorePainter } from "./core.js";
       const b = document.createElement("button");
       b.type = "button";
       b.className = "family overview-family";
+      if (g.face) b.dataset.face = g.face;
       b.style.color = g.color;
       b.innerHTML =
         '<span class="glyph"><i data-lucide="' +
@@ -1106,7 +1168,9 @@ import { createCorePainter } from "./core.js";
     });
     root.querySelector(".trail").textContent = "/   All families";
     root.querySelector(".explore em").textContent =
-      "Select a family to explore";
+      overviewWidth > w
+        ? "Drag or use arrows to explore all skillsets"
+        : "Select a family to explore";
     if (globalThis.lucide) lucide.createIcons();
     draw();
   }
@@ -1146,8 +1210,8 @@ import { createCorePainter } from "./core.js";
         0.12 + rnd(i + 20) * 0.13,
       );
     const os = Math.max(w, 1280) / 1586,
-      cx = OX(793),
-      cy = OY(505),
+      cx = OX(overviewCenter[0]),
+      cy = OY(overviewCenter[1]),
       radius = Math.max(34, 44 * os);
     overviewFamilies.forEach((g) => {
       const x = OX(g.x),
@@ -1922,12 +1986,7 @@ import { createCorePainter } from "./core.js";
       const preferred = originalName;
       DATA = await api("/api/state");
       revision = DATA.revision;
-      colors = DATA.families.map(
-        (_, i) =>
-          ["#b39be5", "#79c9c3", "#dda1b5", "#e7bd7f", "#92b9e3", "#c2ad76"][
-            i % 6
-          ],
-      );
+      colors = familyColors(DATA.families.length);
       preset = Math.max(
         0,
         DATA.presets.findIndex((p) => p.name === preferred),
