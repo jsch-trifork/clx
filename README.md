@@ -77,6 +77,23 @@ To update, download the latest archive and run the install command again. Your l
 
 With no plugins, the interface starts with an empty constellation. You can still create presets for a model or configured integrations. Install plugins and run `clx init --force`, then reload the UI, to populate the map. Loose skills in `~/.claude/skills` or project folders are outside CLX's plugin selection controls and may still load through Claude Code itself.
 
+## Using a different Claude configuration folder
+
+If you have multiple Claude profiles, choose the **configuration folder containing `settings.json` and `plugins/`**, not the folder containing the Claude executable.
+
+When setup cannot load your catalog, the UI shows a **Claude configuration folder** field. Paste your folder path and click **Scan this folder**. If the UI opens but your skills are missing, choose **Choose Claude folder** on the empty screen, or **Claude configuration folder** in the preset menu. The field starts with your saved location, `CLAUDE_CONFIG_DIR`, or `~/.claude`.
+
+You can also configure it from the terminal:
+
+```sh
+clx init --claude-config-dir "/path/to/claude-work" --force
+clx ui
+```
+
+CLX saves the selected folder in your local catalog and uses it for launched Claude sessions. Later scans reuse it when `CLAUDE_CONFIG_DIR` is not set; an explicit CLI folder or `CLAUDE_CONFIG_DIR` can select a different profile during initialization. CLX reads that profile's settings, plugin registry/cache, and `.claude.json` for MCP discovery. It does not copy credentials or change the profile's files. Existing presets remain saved, although skills absent from the selected profile may be unavailable.
+
+`--config-dir` still means **where CLX stores its own catalog and presets**; it is separate from `--claude-config-dir`. Use separate CLX directories if you want separate preset libraries for your profiles. Folder selection does not switch Claude executables; the launcher uses `claude` from your terminal's `PATH`.
+
 ## Using the UI
 
 - **View:** click a family to expand its tree and reveal all skill names. Click a skill for details beside its dot on desktop or in a bottom sheet on mobile.

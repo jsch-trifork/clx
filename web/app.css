@@ -1038,3 +1038,43 @@ button:disabled {
     padding-inline: 10px;
   }
 }
+
+#clx-atlas .load-state {
+  max-height: calc(100% - 40px);
+  overflow-y: auto;
+}
+#clx-atlas .load-state label {
+  display: block;
+  margin: 20px 0 8px;
+}
+#clx-atlas .load-state input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid #82758f;
+  border-radius: 6px;
+  background: #19192c;
+  color: #eeeade;
+}
+#clx-atlas .load-state input::placeholder {
+  color: #bdb5cf;
+}
+#clx-atlas .load-state p {
+  overflow-wrap: anywhere;
+}
+#clx-atlas [data-setup-error] {
+  color: #f0b6bc;
+}
+
+#clx-atlas .load-state form {
+  width: min(520px, 100%);
+  text-align: left;
+}
+#clx-atlas .load-state .primary {
+  color: #eeeade;
+  border-color: #a79abb;
+  min-height: 44px;
+}
+#clx-atlas .load-state .primary:disabled {
+  opacity: 0.55;
+}

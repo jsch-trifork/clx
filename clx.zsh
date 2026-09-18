@@ -320,7 +320,7 @@ clx() {
   setopt local_options pipefail
   local clx_dir="${CLX_DIR:-$HOME/.claude/clx}"
   local catalog="${CLX_CATALOG:-$clx_dir/loadout.json}"
-  local settings="$HOME/.claude/settings.json"
+  local settings="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
   local presets_file="${CLX_PRESETS:-$clx_dir/presets.json}"
   local prompts_dir="${CLX_PROMPTS_DIR:-$clx_dir/prompts}"
   if [[ "$1" == "ui" || "$1" == "init" ]]; then
@@ -338,6 +338,13 @@ clx() {
   fi
 
   _clx_preflight "$catalog" || return 1
+  local chosen_claude_dir="$(jq -r '.claudeConfigDir // empty' "$catalog")"
+  chosen_claude_dir="${chosen_claude_dir:-$CLAUDE_CONFIG_DIR}"
+  if [[ -n "$chosen_claude_dir" ]]; then
+    local -x CLAUDE_CONFIG_DIR="$chosen_claude_dir"
+    settings="$CLAUDE_CONFIG_DIR/settings.json"
+    [[ "$CLAUDE_CONFIG_DIR" == "$HOME/.claude" ]] && unset CLAUDE_CONFIG_DIR
+  fi
 
   # ---- Self-heal: plugin updates move the versioned skill cache dirs; a catalog
   # pointing at vanished dirs is stale — regenerate it via bootstrap before the menus.

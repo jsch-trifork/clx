@@ -1210,7 +1210,7 @@ import { createCorePainter } from "./core.js";
         ...(body ? { "Content-Type": "application/json" } : {}),
       },
       ...(body ? { body: JSON.stringify(body) } : {}),
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(path === "/api/setup" ? 45000 : 15000),
     });
     const result = await response.json();
     if (!response.ok) {
@@ -1284,12 +1284,14 @@ import { createCorePainter } from "./core.js";
     }
     welcome.innerHTML = hasSkills
       ? `<h2>Create your first preset</h2><p>Choose the skills you want Claude to use for a particular kind of work.</p><button class="control primary" data-first-create>Create a preset</button><small>Name it. Choose skills. Save it.</small>`
-      : `<h2>Build your skill constellation</h2><p>No skill plugins found yet. Install a skill-bearing plugin in Claude Code, then run this in your terminal:</p><code>clx init --force</code><div class="row"><button class="control primary" data-first-reload>Reload skills</button><button class="plain" data-first-create>Create a preset without skills</button></div><small>You can save a model-only preset now and add skills later.</small>`;
+      : `<h2>Build your skill constellation</h2><p>No skill plugins found yet. Install a skill-bearing plugin in Claude Code, then run this in your terminal:</p><code>clx init --force</code><div class="row"><button class="control primary" data-choose-folder>Choose Claude folder</button><button class="plain" data-first-reload>Reload skills</button><button class="plain" data-first-create>Create a preset without skills</button></div><small>You can save a model-only preset now and add skills later.</small>`;
     welcome.querySelector("[data-first-create]").onclick = () => {
       namingFirstPreset = true;
       renderWelcome();
       welcome.querySelector("input").focus();
     };
+    const chooseFolder = welcome.querySelector("[data-choose-folder]");
+    if (chooseFolder) chooseFolder.onclick = () => showSetup();
     const reload = welcome.querySelector("[data-first-reload]");
     if (reload) reload.onclick = () => load();
   }
@@ -1378,7 +1380,7 @@ import { createCorePainter } from "./core.js";
               "</span></button>",
           )
           .join("") +
-        '</div><button class="item" data-new>+ New preset</button><button class="item" data-edit>Edit current preset</button><button class="item" data-reload>Reload from disk</button>' +
+        '</div><button class="item" data-new>+ New preset</button><button class="item" data-edit>Edit current preset</button><button class="item" data-reload>Reload from disk</button><button class="item" data-claude-folder>Claude configuration folder</button>' +
         (originalName
           ? '<button class="item" data-launch ' +
             (dirty ? "disabled" : "") +
@@ -1398,6 +1400,8 @@ import { createCorePainter } from "./core.js";
     menu.querySelector("[data-edit]").onclick = presetEditor;
     menu.querySelector("[data-reload]").onclick = () =>
       leaveDraft(() => load());
+    menu.querySelector("[data-claude-folder]").onclick = () =>
+      leaveDraft(() => showSetup());
     if (menu.querySelector("[data-launch]"))
       menu.querySelector("[data-launch]").onclick = launch;
     if (menu.querySelector("[data-warnings]"))
@@ -1657,6 +1661,52 @@ import { createCorePainter } from "./core.js";
       showError(error);
     }
   }
+  async function showSetup(problem = "") {
+    const host = root.querySelector(".load-state");
+    host.hidden = false;
+    host.innerHTML = `<h2>Connect your Claude configuration</h2><p>Choose the folder containing <code>settings.json</code> and <code>plugins</code>. This is your Claude profile, not the Claude executable.</p>
+      <form data-setup-form><label for="claude-config-folder">Claude configuration folder</label><input id="claude-config-folder" name="directory" placeholder="~/.claude" required autocomplete="off" spellcheck="false" aria-describedby="claude-folder-help">
+      <p id="claude-folder-help">Paste a folder path. CLX remembers it for skill discovery and launched sessions. Your presets are kept.</p>
+      <p data-setup-error role="alert"></p><div class="row"><button class="control primary" type="submit" disabled>Scan this folder</button><button class="plain" type="button" data-setup-cancel>${draft ? "Cancel" : "Try again"}</button></div></form>`;
+    const form = host.querySelector("form"),
+      input = host.querySelector("input"),
+      submit = host.querySelector('[type="submit"]'),
+      error = host.querySelector("[data-setup-error]");
+    error.textContent = problem;
+    host.querySelector("[data-setup-cancel]").onclick = () => {
+      if (draft) host.hidden = true;
+      else load();
+    };
+    try {
+      input.value = (await api("/api/setup")).directory;
+      submit.disabled = false;
+    } catch (e) {
+      error.textContent = e.message;
+    }
+    input.focus();
+    input.oninput = () => {
+      error.textContent = "";
+    };
+    form.onsubmit = async (event) => {
+      event.preventDefault();
+      submit.disabled = true;
+      input.disabled = true;
+      host.querySelector("[data-setup-cancel]").disabled = true;
+      submit.textContent = "Scanning…";
+      error.textContent = "";
+      try {
+        await api("/api/setup", { directory: input.value });
+        await load();
+      } catch (e) {
+        error.textContent = e.message;
+        submit.disabled = false;
+        input.disabled = false;
+        host.querySelector("[data-setup-cancel]").disabled = false;
+        submit.textContent = "Scan this folder";
+        input.focus();
+      }
+    };
+  }
   async function load() {
     const loading = root.querySelector(".load-state");
     loading.hidden = false;
@@ -1698,11 +1748,7 @@ import { createCorePainter } from "./core.js";
       }
       root.querySelector(".chrome").hidden = false;
     } catch (error) {
-      loading.innerHTML =
-        "<h2>CLX needs your attention</h2><p>" +
-        esc(error.message) +
-        '</p><p>New installation? Run <code>clx init</code> in your terminal.</p><button class="control">Try again</button>';
-      loading.querySelector("button").onclick = load;
+      await showSetup(error.message);
     }
   }
   window.addEventListener("beforeunload", (e) => {

@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 import { spawn, execFile } from "node:child_process";
-import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs, promisify } from "node:util";
 import { StoreError } from "../src/store.mjs";
+import { initializeCatalog, setupLocation } from "../src/setup.mjs";
 import { startServer } from "../src/server.mjs";
 
 const appDir = fileURLToPath(new URL("../", import.meta.url));
 const args = process.argv.slice(2);
-const help = `CLX — Claude Code launcher and skill constellation\n\n  clx ui [--no-open] [--port 0] [--config-dir PATH]\n  clx init [--force] [--config-dir PATH]\n  clx [preset name]    Launch Claude in this terminal\n\nUI saves use the same presets.json as the terminal launcher.\nRequires Node 20+. Terminal launch/discovery also needs zsh, jq, gum and Claude Code.\nConfig: CLX_DIR, CLX_CATALOG, CLX_PRESETS; default ~/.claude/clx.\n`;
+const help = `CLX — Claude Code launcher and skill constellation\n\n  clx ui [--no-open] [--port 0] [--config-dir PATH]\n  clx init [--force] [--config-dir PATH] [--claude-config-dir PATH]\n  clx [preset name]    Launch Claude in this terminal\n\nUI saves use the same presets.json as the terminal launcher.\nRequires Node 20+. Terminal launch/discovery also needs zsh, jq, gum and Claude Code.\nConfig: CLX_DIR, CLX_CATALOG, CLX_PRESETS; default ~/.claude/clx.\n`;
 function run(command, argv, env = process.env) {
   const child = spawn(command, argv, { stdio: "inherit", env });
   child.on("error", (e) => {
@@ -31,6 +31,7 @@ try {
         "no-open": { type: "boolean" },
         port: { type: "string", default: "0" },
         "config-dir": { type: "string" },
+        "claude-config-dir": { type: "string" },
         force: { type: "boolean" },
       },
     });
@@ -42,22 +43,53 @@ try {
     const catalogFile = process.env.CLX_CATALOG || join(dir, "loadout.json");
     const presetsFile = process.env.CLX_PRESETS || join(dir, "presets.json");
     if (command === "init") {
-      await mkdir(dir, { recursive: true });
-      run("zsh", [
-        join(appDir, "bootstrap.zsh"),
+      await initializeCatalog(
         catalogFile,
-        ...(values.force ? ["--force"] : []),
-      ]);
+        values["claude-config-dir"],
+        values.force,
+      );
+      console.log(`CLX catalog ready: ${catalogFile}`);
     } else {
       const port = Number(values.port);
       if (!Number.isInteger(port) || port < 0 || port > 65535)
         throw new Error("Port must be 0–65535.");
-      let running = false;
+      if (values["claude-config-dir"])
+        throw new Error(
+          "Use clx init --claude-config-dir PATH --force to choose the Claude configuration folder.",
+        );
+      let running = false,
+        scanning = false;
       const { server, url } = await startServer({
         catalogFile,
         presetsFile,
         port,
+        onSetup: async (request) => {
+          if (running)
+            throw new StoreError(
+              "Finish the running Claude session before changing folders.",
+              409,
+            );
+          if (request) {
+            if (scanning)
+              throw new StoreError(
+                "A folder scan is already running. Wait for it to finish.",
+                409,
+              );
+            scanning = true;
+            try {
+              await initializeCatalog(catalogFile, request.directory, true);
+            } finally {
+              scanning = false;
+            }
+          }
+          return setupLocation(catalogFile);
+        },
         onLaunch: async (name) => {
+          if (scanning)
+            throw new StoreError(
+              "Wait for the folder scan to finish before launching.",
+              409,
+            );
           if (running)
             throw new StoreError(
               "A Claude session is already running in this terminal.",

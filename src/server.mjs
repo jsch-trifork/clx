@@ -23,6 +23,7 @@ export async function startServer({
   presetsFile,
   port = 0,
   onLaunch,
+  onSetup,
 }) {
   const token = randomBytes(32).toString("hex");
   const server = http.createServer(async (req, res) => {
@@ -60,6 +61,14 @@ export async function startServer({
             error:
               "Open the authenticated URL printed by clx ui in your terminal.",
           });
+        if (req.method === "GET" && url.pathname === "/api/setup") {
+          if (!onSetup)
+            throw new StoreError(
+              "Folder setup is unavailable in this server.",
+              503,
+            );
+          return json(200, await onSetup());
+        }
         if (req.method === "GET" && url.pathname === "/api/state") {
           const catalog = await readCatalog(catalogFile),
             snapshot = await readPresets(presetsFile);
@@ -71,7 +80,7 @@ export async function startServer({
         }
         if (
           req.method === "POST" &&
-          ["/api/presets", "/api/launch"].includes(url.pathname)
+          ["/api/presets", "/api/launch", "/api/setup"].includes(url.pathname)
         ) {
           if (req.headers["content-type"]?.split(";")[0] !== "application/json")
             return json(415, { error: "Expected JSON." });
@@ -88,6 +97,19 @@ export async function startServer({
             request = JSON.parse(Buffer.concat(chunks));
           } catch {
             throw new StoreError("Invalid JSON.");
+          }
+          if (url.pathname === "/api/setup") {
+            if (!onSetup)
+              throw new StoreError(
+                "Folder setup is unavailable in this server.",
+                503,
+              );
+            if (
+              typeof request?.directory !== "string" ||
+              !request.directory.trim()
+            )
+              throw new StoreError("Enter a Claude configuration folder.");
+            return json(200, await onSetup(request));
           }
           if (url.pathname === "/api/launch") {
             const { records } = await readPresets(presetsFile);

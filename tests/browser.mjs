@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
+import { initializeCatalog } from "../src/setup.mjs";
 import { startServer } from "../src/server.mjs";
 
 const dir = await mkdtemp(join(tmpdir(), "clx-e2e-"));
@@ -52,6 +53,10 @@ const { server, url } = await startServer({
   catalogFile,
   presetsFile,
   onLaunch: async () => {},
+  onSetup: async (request) => {
+    if (request) await initializeCatalog(catalogFile, request.directory, true);
+    return { directory: join(dir, "alternate profile") };
+  },
 });
 let browser;
 try {
@@ -254,6 +259,71 @@ try {
         `${width}: first preset with ${hasSkills ? "installed" : "no"} skills; persistent CTA, naming, Cancel, Save and reload passed`,
       );
     }
+  }
+  const alternate = join(dir, "alternate profile");
+  const plugin = join(
+    alternate,
+    "plugins/cache/test/custom/1/skills/custom-skill",
+  );
+  await mkdir(plugin, { recursive: true });
+  await writeFile(join(plugin, "SKILL.md"), "---\nname: custom-skill\n---\n");
+  await writeFile(
+    join(alternate, "settings.json"),
+    JSON.stringify({ enabledPlugins: { "custom@test": true } }),
+  );
+  for (const width of [1280, 390]) {
+    await rm(catalogFile);
+    const page = await browser.newPage({ viewport: { width, height: 860 } });
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    await page.goto(url);
+    const input = page.getByLabel("Claude configuration folder");
+    await input.waitFor();
+    await page
+      .getByRole("button", { name: "Scan this folder", exact: true })
+      .waitFor();
+    await input.fill(join(dir, "not found"));
+    await page
+      .getByRole("button", { name: "Scan this folder", exact: true })
+      .click();
+    await page.waitForFunction(() =>
+      document
+        .querySelector("[data-setup-error]")
+        .textContent.includes("does not exist"),
+    );
+    await input.fill(alternate);
+    await page.screenshot({ path: `/tmp/clx-folder-setup-${width}.png` });
+    const saved = await readFile(presetsFile, "utf8");
+    await page
+      .getByRole("button", { name: "Scan this folder", exact: true })
+      .click();
+    await page.locator(".overview-family").first().waitFor();
+    assert.equal(await page.locator(".overview-node").count(), 1);
+    assert.equal(await readFile(presetsFile, "utf8"), saved);
+    assert.equal(
+      JSON.parse(await readFile(catalogFile)).claudeConfigDir,
+      alternate,
+    );
+    await page.reload();
+    await page.locator(".overview-family").first().waitFor();
+    assert.equal(await page.locator(".load-state").isVisible(), false);
+    await page.locator("[data-action=options]").click();
+    await page
+      .getByRole("button", { name: "Claude configuration folder", exact: true })
+      .click();
+    await input.waitFor();
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    assert.equal(await page.locator(".load-state").isVisible(), false);
+    assert.deepEqual(errors, []);
+    assert(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    );
+    await page.close();
+    console.log(
+      `${width}: missing catalog, invalid folder, alternate profile scan, restart and Cancel passed`,
+    );
   }
 } finally {
   await browser?.close();
