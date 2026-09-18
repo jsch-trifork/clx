@@ -1212,3 +1212,70 @@ button:disabled {
   top: auto;
   bottom: calc(100% + 10px);
 }
+
+#clx-atlas.circular-overview .overview-family .caption {
+  top: calc(100% + 8px);
+  bottom: auto;
+  width: var(--label-width);
+  pointer-events: none;
+}
+#clx-atlas.circular-overview .overview-family b {
+  font-size: var(--label-size);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#clx-atlas.circular-overview .overview-family small {
+  font-size: 9px;
+}
+#clx-atlas.circular-overview .overview-family .glyph svg {
+  width: var(--icon-size);
+  height: var(--icon-size);
+}
+#clx-atlas.circular-overview .overview-node {
+  width: 18px;
+  height: 18px;
+  margin: -9px;
+}
+#clx-atlas [data-zoom][hidden] {
+  display: none;
+}
+
+#clx-atlas.circular-overview
+  .overview-family[data-label-side="above"]
+  .caption {
+  top: auto;
+  bottom: calc(100% + 8px);
+}
+
+#clx-atlas.circular-overview
+  .overview-family[data-label-side="inside-left"]
+  .caption,
+#clx-atlas.circular-overview
+  .overview-family[data-label-side="inside-right"]
+  .caption {
+  top: calc(50% - 16px);
+  bottom: auto;
+  transform: translate(-50%, -50%);
+}
+#clx-atlas.circular-overview
+  .overview-family[data-label-side="inside-left"]
+  .caption {
+  left: calc(0px - var(--label-width) / 2 - 10px);
+}
+#clx-atlas.circular-overview
+  .overview-family[data-label-side="inside-right"]
+  .caption {
+  left: calc(100% + var(--label-width) / 2 + 10px);
+}
+#clx-atlas.circular-overview.overview-mini .overview-family .caption {
+  left: 50%;
+  top: calc(100% + 6px);
+  bottom: auto;
+  transform: translateX(-50%);
+  width: 45px;
+}
+#clx-atlas.circular-overview.overview-mini .overview-family small {
+  display: none;
+}

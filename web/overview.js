@@ -1,6 +1,6 @@
+import { buildSkillTree } from "./geometry.js";
 // Hub positions are independent of selection so changing presets never moves groups.
 export function familyLayout(count, width, height, skillCounts = []) {
-  const scale = Math.max(width, 1280) / 1586;
   const old = [
     [450, 255],
     [1080, 270],
@@ -15,47 +15,63 @@ export function familyLayout(count, width, height, skillCounts = []) {
       center: [793, 505],
       positions: old.slice(0, count).map(([x, y]) => ({ x, y })),
     };
-  // A rounded perimeter leaves explicit lanes for top, bottom and side hubs.
-  // Unlike a fixed ellipse, its ends cannot bunch up as more groups are added.
-  const topCount = Math.ceil((count - 2) / 2);
-  const bottomCount = count - 2 - topCount;
-  const ry = 100;
-  const rows = Math.max(
-    1,
-    Math.floor((height / 2 - ry - 20 - 55 - 155) / 27) + 1,
-  );
-  const slotWidth = Math.max(
-    360,
-    Math.ceil(Math.max(0, ...skillCounts) / rows) * 27 + 80,
-  );
-  const worldWidth = Math.max(width, 1400 + (topCount - 1) * slotWidth);
-  const centerX = worldWidth / 2,
-    centerY = height / 2;
-  const points = [];
-  const row = (n, side, reverse = false) => {
-    for (let j = 0; j < n; j++) {
-      const i = reverse ? n - 1 - j : j;
-      const t = n === 1 ? 0.5 : i / (n - 1);
-      points.push({
-        x: 700 + t * (worldWidth - 1400),
-        y: centerY + side * (ry + Math.sin(t * Math.PI) * 20),
-        face: side < 0 ? "top" : "bottom",
-      });
-    }
-  };
-  row(topCount, -1);
-  points.push({ x: worldWidth - 320, y: centerY, face: "right" });
-  row(bottomCount, 1, true);
-  points.push({ x: 320, y: centerY, face: "left" });
-  const canonical = (x, y) => ({
-    x: x / scale,
-    y: (y - (height - 992 * scale) / 2) / scale,
-  });
-  const center = canonical(centerX, centerY);
+  const radius = Math.max(280, count * 30);
+  const size = (radius + 245) * 2;
+  const center = [size / 2, size / 2];
   return {
-    width: worldWidth,
-    center: [center.x, center.y],
-    positions: points.map((p) => ({ ...canonical(p.x, p.y), face: p.face })),
+    width: size,
+    height: size,
+    circular: true,
+    center,
+    positions: Array.from({ length: count }, (_, i) => {
+      const angle = -Math.PI / 2 + (i * Math.PI * 2) / count;
+      return {
+        x: center[0] + Math.cos(angle) * radius,
+        y: center[1] + Math.sin(angle) * radius,
+        angle,
+        face:
+          Math.abs(Math.sin(angle)) > 0.7
+            ? Math.sin(angle) < 0
+              ? "top"
+              : "bottom"
+            : Math.cos(angle) < 0
+              ? "left"
+              : "right",
+      };
+    }),
+  };
+}
+
+// Preserve the topology of the expanded skill tree, including shared forks.
+export function radialSkillTree(skills, hub, count) {
+  const tree = buildSkillTree(skills);
+  if (!tree.points.length) return { points: [], edges: [] };
+  const extentX = Math.max(...tree.points.map((p) => p.x - 680));
+  const extentY = Math.max(1, ...tree.points.map((p) => Math.abs(p.y - 486)));
+  const sectorWidth =
+    2 * Math.sin(Math.PI / count) * (Math.max(280, count * 30) + 110) * 0.76;
+  const depth = Math.min(210, Math.max(130, 100 + skills.length * 2));
+  const transform = ([x, y]) => {
+    if (x === 680 && y === 486) return [hub.x, hub.y];
+    const reach = 46 + ((x - 680) / extentX) * depth;
+    const spread = (((y - 486) / extentY) * sectorWidth) / 2;
+    return [
+      hub.x + Math.cos(hub.angle) * reach - Math.sin(hub.angle) * spread,
+      hub.y + Math.sin(hub.angle) * reach + Math.cos(hub.angle) * spread,
+    ];
+  };
+  const points = tree.points.map((p) => {
+    const [x, y] = transform([p.x, p.y]);
+    return { ...p, x, y };
+  });
+  return {
+    points,
+    edges: tree.edges.map(([a, b], i) => ({
+      a: transform(a),
+      b: transform(b),
+      p: points[i],
+      fromHub: a[0] === 680 && a[1] === 486,
+    })),
   };
 }
 
