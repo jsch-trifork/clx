@@ -26,7 +26,7 @@ test("fresh init is offline and contains only this user's discovered configurati
   const data = JSON.parse(initial);
   assert.deepEqual(
     data.models.map((m) => m.id),
-    ["sonnet", "opus", "haiku"],
+    ["sonnet", "opus", "opus[1m]", "fable", "haiku"],
   );
   assert.deepEqual(data.skillPlugins, []);
   assert.deepEqual(data.otherPlugins, []);

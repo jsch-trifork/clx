@@ -133,6 +133,19 @@ unset _stub_dir _t
   rm -rf "$old" "$stub"
 }
 
+# Older catalogs gain missing built-in models; existing entries keep their order.
+() {
+  local cat=$(mktemp)
+  echo '{"models":[{"id":"opus","label":"My Opus"},{"id":"claude-opus-4-8","label":"Opus 4.8"}],"skillPlugins":[]}' > "$cat"
+  _clx_add_builtin_models "$cat"
+  assert_eq "builtin_models_added" "$(jq -r '[.models[].id] | join(",")' "$cat")" "opus,claude-opus-4-8,sonnet,opus[1m],fable,haiku"
+  assert_eq "builtin_models_label_kept" "$(jq -r '.models[0].label' "$cat")" "My Opus"
+  local before=$(<"$cat")
+  _clx_add_builtin_models "$cat"
+  assert_eq "builtin_models_idempotent" "$(<"$cat")" "$before"
+  rm -f "$cat"
+}
+
 # Task 2 — preset getters
 assert_eq "pnames"        "$(_clx_preset_names "$PRE" | tr '\n' ',')"            "stale,web,"
 assert_eq "pnames_missing" "$(_clx_preset_names /nope/presets.json)"            ""
