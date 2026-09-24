@@ -89,11 +89,7 @@ fi
 
 # Claude Code aliases resolve on the user's own provider and account.
 # No credentials or network request are needed to build a catalog.
-local models='[
-  {"id":"sonnet","label":"Sonnet (default)"},
-  {"id":"opus","label":"Opus"},
-  {"id":"haiku","label":"Haiku"}
-]'
+local models=$(<"${0:A:h}/models.json")
 mkdir -p "${out:h}"
 local temp_out=$(mktemp "${out}.tmp.XXXXXX")
 jq -n --arg claudeConfigDir "$source_dir" --argjson models "$models" --argjson mcp "$mcp" --argjson sp "$skill_plugins" --argjson op "$other_plugins" '{

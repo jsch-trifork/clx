@@ -251,6 +251,19 @@ _clx_preflight() {
   return 0
 }
 
+# Add built-in models that an older catalog lacks, so an update brings new model
+# choices without `clx init --force`. Existing entries and their order are kept.
+_clx_add_builtin_models() {
+  local catalog="$1" builtin="$_CLX_SOURCE_DIR/models.json" merged tmp
+  [[ -f "$builtin" ]] || return 0
+  merged=$(jq --slurpfile b "$builtin" \
+    '(.models | map(.id)) as $have | .models += [$b[0][] | select(.id as $i | $have | index($i) | not)]' \
+    "$catalog" 2>/dev/null) || return 0
+  [[ "$(jq '.models | length' <<<"$merged")" == "$(jq '.models | length' "$catalog")" ]] && return 0
+  tmp=$(mktemp "$catalog.tmp.XXXXXX") || return 0
+  print -r -- "$merged" > "$tmp" && mv "$tmp" "$catalog" || rm -f "$tmp"
+}
+
 # `clx prompts` — manage the prompt library: new, edit, rename, delete. Deleting
 # or renaming also fixes up every preset that referenced it, so the library and
 # presets.json cannot drift apart.
@@ -342,6 +355,7 @@ clx() {
   fi
 
   _clx_preflight "$catalog" || return 1
+  _clx_add_builtin_models "$catalog"
   local chosen_claude_dir="$(jq -r '.claudeConfigDir // empty' "$catalog")"
   chosen_claude_dir="${chosen_claude_dir:-$CLAUDE_CONFIG_DIR}"
   if [[ -n "$chosen_claude_dir" ]]; then

@@ -1,0 +1,7 @@
+[
+  {"id":"sonnet","label":"Sonnet (default)"},
+  {"id":"opus","label":"Opus"},
+  {"id":"opus[1m]","label":"Opus (1M context)"},
+  {"id":"fable","label":"Fable"},
+  {"id":"haiku","label":"Haiku"}
+]

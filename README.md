@@ -171,7 +171,7 @@ CLX defaults to `~/.claude/clx` **on the current user's machine**:
 
 These files are not distributed with the app. **Do not share your generated catalog:** MCP configuration can contain credentials. Only MCP names—not command arguments or environment secrets—are sent to the browser. Skill descriptions and preset selections are visible in the local UI.
 
-`clx init` reads your Claude settings, plugin registry/cache, and MCP configuration. It requires no API key and makes no network requests. MCP discovery merges global and configured project entries; review the integration names before selecting them. Models use Claude Code's [provider-resolved aliases](https://code.claude.com/docs/en/model-config); availability still depends on your account/provider. You can edit model entries in your local catalog.
+`clx init` reads your Claude settings, plugin registry/cache, and MCP configuration. It requires no API key and makes no network requests. MCP discovery merges global and configured project entries; review the integration names before selecting them. Models use Claude Code's [provider-resolved aliases](https://code.claude.com/docs/en/model-config); availability still depends on your account/provider. The built-in choices are Sonnet, Opus, Opus (1M context), Fable and Haiku; when a CLX update adds a choice, it is added to your existing catalog automatically. You can edit model entries in your local catalog.
 
 The server binds to `127.0.0.1` and requires a per-run browser token. CLX has no analytics or hosted service. Launching Claude or your selected plugins/integrations uses those tools' own network behavior and permissions.
 

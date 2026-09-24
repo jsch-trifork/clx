@@ -157,3 +157,12 @@ test("missing skill files become visible warnings", async (t) => {
   assert.equal(data.warnings.length, 0);
   assert.equal(data.families[0].skills[0].available, true);
 });
+test("older catalogs gain new built-in models after existing ones", async (t) => {
+  const s = await setup(t);
+  const data = await readCatalog(s.catalogFile);
+  assert.deepEqual(
+    data.models.map((m) => m.id),
+    ["sonnet", "opus", "opus[1m]", "fable", "haiku"],
+  );
+  assert.equal(data.models[0].label, "Sonnet");
+});

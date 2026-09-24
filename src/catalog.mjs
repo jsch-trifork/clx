@@ -2,6 +2,16 @@ import { readFile, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { parse } from "yaml";
 
+const builtinModels = JSON.parse(
+  await readFile(new URL("../models.json", import.meta.url), "utf8"),
+);
+
+// Older catalogs predate newer built-in models; offer them without clx init --force.
+function withBuiltinModels(models) {
+  const have = new Set(models.map((m) => m.id));
+  return [...models, ...builtinModels.filter((m) => !have.has(m.id))];
+}
+
 export async function readCatalog(file) {
   let catalog;
   try {
@@ -61,7 +71,10 @@ export async function readCatalog(file) {
   );
   return {
     families,
-    models: catalog.models.map(({ id, label }) => ({ id, label })),
+    models: withBuiltinModels(catalog.models).map(({ id, label }) => ({
+      id,
+      label,
+    })),
     otherPlugins: (catalog.otherPlugins || []).map(({ id, name }) => ({
       id,
       name,

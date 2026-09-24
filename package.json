@@ -15,6 +15,7 @@
     "web",
     "clx.zsh",
     "bootstrap.zsh",
+    "models.json",
     "README.md",
     "scripts"
   ],
