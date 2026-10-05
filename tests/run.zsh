@@ -3,6 +3,8 @@ emulate -L zsh
 setopt null_glob
 local here="${0:A:h}"
 source "$here/assert.zsh"
+# Keep the user's real workspaces out of menu-driven tests.
+export CLX_WORKSPACES=/nonexistent/workspaces.json
 source "$here/../clx.zsh"
 for f in "$here"/test_*.zsh; do source "$f"; done
 print -r -- "----"

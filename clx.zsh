@@ -328,6 +328,154 @@ _clx_prompts_manage() {
   done
 }
 
+# Workspaces rely on sandbox settings (strictAllowlist, deniedDomains, allowRead) that
+# older Claude Code versions ignore without a warning, silently weakening the scope.
+# This is the version the workspace limits were verified against.
+typeset -g _CLX_WORKSPACE_MIN_CLAUDE="2.1.281"
+_clx_claude_supports_workspaces() {
+  local bin="$1" out version
+  out=$(command "$bin" --version 2>/dev/null)
+  version="${${(z)out}[1]}"
+  if [[ "$version" != <->.<->.<-> ]]; then
+    print -ru2 -- "clx: couldn't read the Claude Code version from '$bin --version'; workspaces need $_CLX_WORKSPACE_MIN_CLAUDE or newer"
+    return 1
+  fi
+  autoload -Uz is-at-least
+  if ! is-at-least "$_CLX_WORKSPACE_MIN_CLAUDE" "$version"; then
+    print -ru2 -- "clx: Claude Code $version is too old for workspaces: it would ignore some of the limits. Update to $_CLX_WORKSPACE_MIN_CLAUDE or newer (claude update, or brew upgrade)."
+    return 1
+  fi
+}
+
+# Print the project skills Claude Code will load on its own, outside clx's presets:
+# .claude/skills in each folder and its parents, up to the git repo root (or up to
+# the home folder outside a repo). ~/.claude/skills are personal skills, not project.
+_clx_project_skills() {
+  local folder dir top skill
+  local -a names
+  for folder in "$@"; do
+    names=()
+    top=$(git -C "$folder" rev-parse --show-toplevel 2>/dev/null) || top=""
+    dir="${folder:A}"
+    while :; do
+      if [[ "$dir" != "$HOME" ]]; then
+        for skill in "$dir"/.claude/skills/*/SKILL.md(N); do names+=("${skill:h:t}"); done
+      fi
+      [[ -n "$top" && "$dir" == "${top:A}" ]] && break
+      [[ "$dir" == "$HOME" || "$dir" == / ]] && break
+      dir="${dir:h}"
+    done
+    (( ${#names[@]} )) && print -r -- "clx: project skills from ${folder:t}: ${(j:, :)names}"
+  done
+  return 0
+}
+
+# Fetch each workspace folder that is a git clone. Failures only warn: an offline
+# launch still works, just with whatever the last fetch brought in.
+_clx_workspace_fetch() {
+  local dir
+  for dir in "$@"; do
+    git -C "$dir" rev-parse --git-dir >/dev/null 2>&1 || continue
+    if GIT_TERMINAL_PROMPT=0 command git -C "$dir" fetch --all --prune --quiet 2>/dev/null; then
+      print -r -- "clx: fetched ${dir:t}"
+    else
+      print -ru2 -- "clx: could not fetch ${dir:t}; the session sees its last fetch"
+    fi
+  done
+}
+
+# ---- clx workspaces: create, edit, rename and delete workspaces ----
+_clx_ws() { command node "$_CLX_SOURCE_DIR/scripts/workspace.mjs" "$@"; }
+
+# Ask for folders and MCP servers, then save. $3 is the existing entry (JSON) or
+# empty for a new workspace; settings not asked for here (network, github, …) are kept.
+_clx_workspace_edit() {
+  local file="$1" name="$2" existing="$3" catalog="$4"
+  [[ -z "$existing" ]] && existing='{}'
+  local start extra raw_mcp tmp entry current
+  local -a dirs cur_mcp sel_flags mcp_names
+  # A new workspace starts from the folder you're in.
+  current=$(jq -r '.start // empty' <<<"$existing")
+  start=$(gum input --header "Start folder (Claude starts here):" --value "${current:-$PWD}") || return 1
+  [[ -z "$start" ]] && start="$PWD"
+  extra=$(gum input --header "Extra folders, comma-separated (empty for none):" \
+    --value "$(jq -r '(.dirs // []) | join(", ")' <<<"$existing")") || return 1
+  dirs=("${(@s:,:)extra}"); dirs=("${(@)${(@)dirs## }%% }"); dirs=("${(@)dirs:#}")
+  if [[ -f "$catalog" ]] && (( $(jq '.mcpServers // {} | length' "$catalog") )); then
+    cur_mcp=("${(@f)$(jq -r '(.mcp // [])[]' <<<"$existing")}"); cur_mcp=("${(@)cur_mcp:#}")
+    sel_flags=("${(@f)$(_clx_selected_args "${cur_mcp[@]}")}"); sel_flags=("${(@)sel_flags:#}")
+    raw_mcp=$(jq -r '.mcpServers | keys[]' "$catalog" \
+      | gum choose --no-limit --header "MCP servers this workspace may use (they run outside the sandbox; none = off):" "${sel_flags[@]}") || return 1
+    mcp_names=("${(@f)raw_mcp}"); mcp_names=("${(@)mcp_names:#}")
+  fi
+  entry=$(jq -n --argjson e "$existing" --arg s "$start" \
+    --argjson d "$(printf '%s\n' "${dirs[@]}" | jq -R . | jq -s 'map(select(length>0))')" \
+    --argjson m "$(printf '%s\n' "${mcp_names[@]}" | jq -R . | jq -s 'map(select(length>0))')" \
+    '$e + {start:$s}
+     | if ($d|length) > 0 then .dirs = $d else del(.dirs) end
+     | if ($m|length) > 0 then .mcp = $m else del(.mcp) end')
+  tmp=$(mktemp "${TMPDIR:-/tmp}/clx-ws-XXXXXX") || return 1
+  print -r -- "$entry" > "$tmp"
+  _clx_ws set "$file" "$name" "$tmp"; local rc=$?
+  rm -f "$tmp"
+  return $rc
+}
+
+_clx_workspaces_manage() {
+  local file="$1" catalog="$2"
+  local editor="${VISUAL:-${EDITOR:-vi}}"
+  local -a display
+  local choice target action newname tmp
+  while true; do
+    display=("+ new workspace" "${(@f)$(_clx_ws show "$file")}")
+    display=("${(@)display:#}")
+    choice=$(print -rl -- "${display[@]}" "— done —" | gum choose --header "Workspaces:") || return 0
+    case "$choice" in
+      "— done —") return 0 ;;
+      "+ new workspace")
+        newname=$(gum input --header "Workspace name:" --placeholder "e.g. present") || continue
+        newname="${${newname## }%% }"
+        [[ -z "$newname" ]] && continue
+        if _clx_ws list "$file" | grep -qxF -- "$newname"; then
+          print -ru2 -- "clx: '$newname' already exists"; continue
+        fi
+        _clx_workspace_edit "$file" "$newname" "" "$catalog" \
+          && print -r -- "clx: saved '$newname'. Launch it with: clx -w $newname <preset>"
+        ;;
+      *)
+        target="${choice%%  ·  *}"
+        action=$(print -rl -- "edit folders and MCP servers" "edit all settings in $editor:t" rename delete "— back —" \
+          | gum choose --header "Workspace '$target':") || continue
+        case "$action" in
+          "edit folders"*)
+            _clx_workspace_edit "$file" "$target" "$(_clx_ws get "$file" "$target")" "$catalog" ;;
+          "edit all settings"*)
+            tmp=$(mktemp "${TMPDIR:-/tmp}/clx-ws-XXXXXX") || continue
+            _clx_ws get "$file" "$target" > "$tmp"
+            # Keep reopening until it saves or you give up; nothing is written until it checks out.
+            while true; do
+              "$editor" "$tmp"
+              _clx_ws set "$file" "$target" "$tmp" && break
+              gum confirm "Open it again to fix?" || break
+            done
+            rm -f "$tmp"
+            ;;
+          rename)
+            newname=$(gum input --header "New name for '$target':" --value "$target") || continue
+            newname="${${newname## }%% }"
+            [[ -z "$newname" || "$newname" == "$target" ]] && continue
+            _clx_ws rename "$file" "$target" "$newname"
+            ;;
+          delete)
+            gum confirm --default=false "Delete workspace '$target'? Its folders are not touched." \
+              && _clx_ws delete "$file" "$target"
+            ;;
+        esac
+        ;;
+    esac
+  done
+}
+
 clx() {
   emulate -L zsh
   setopt local_options pipefail
@@ -344,13 +492,33 @@ clx() {
     command node "$ui_entry" "$ui_command" "$@"
     return $?
   fi
-  if [[ -z "$CLX_PROFILE_READY" && -f "$clx_dir/profiles.json" && "$1" != "prompts" ]]; then
+  if [[ -z "$CLX_PROFILE_READY" && -f "$clx_dir/profiles.json" && "$1" != "prompts" && "$1" != "workspaces" ]]; then
     command node "${CLX_UI_BIN:-$_CLX_SOURCE_DIR/bin/clx.mjs}" "$@"
     return $?
   fi
   # Managing prompts needs neither catalog nor plugins, so route before preflight.
   if [[ "$1" == "prompts" ]]; then
     _clx_prompts_manage "$prompts_dir" "$presets_file"
+    return $?
+  fi
+
+  # Workspace: `-w NAME` / `--workspace NAME` scopes the session to a few folders.
+  local workspaces_file="${CLX_WORKSPACES:-$clx_dir/workspaces.json}" workspace="" ws_start="" chrome=""
+  local -a rest_args
+  while (( $# )); do
+    case "$1" in
+      -w|--workspace)
+        [[ -z "$2" ]] && { print -ru2 -- "clx: $1 needs a workspace name"; return 1; }
+        workspace="$2"; shift 2 ;;
+      --workspace=*) workspace="${1#--workspace=}"; shift ;;
+      --chrome) chrome=1; shift ;;
+      --no-chrome) chrome=0; shift ;;
+      *) rest_args+=("$1"); shift ;;
+    esac
+  done
+  set -- "${rest_args[@]}"
+  if [[ "$1" == "workspaces" ]]; then
+    _clx_workspaces_manage "$workspaces_file" "$catalog"
     return $?
   fi
 
@@ -439,6 +607,20 @@ clx() {
     [[ "$action" == "model and effort only (this launch)" ]] && { asis=1; quick_model=1; }
     break
   done
+
+  # ---- Workspace selection (menus only; direct `clx <preset>` stays unscoped) ----
+  if [[ -z "$workspace" ]] && (( ! $# )) && [[ -f "$workspaces_file" ]]; then
+    local -a wnames
+    wnames=("${(@f)$(command node "$_CLX_SOURCE_DIR/scripts/workspace.mjs" list "$workspaces_file")}"); wnames=("${(@)wnames:#}")
+    if (( ${#wnames[@]} )); then
+      choice=$(print -rl -- "— none (this folder, unscoped) —" "${wnames[@]}" | gum choose --header "Workspace:") || return 1
+      [[ "$choice" != "— none"* ]] && workspace="$choice"
+    fi
+  fi
+
+  if [[ -n "$workspace" ]]; then
+    _clx_claude_supports_workspaces "${CLX_CLAUDE_BIN:-claude}" || return 1
+  fi
 
   if (( asis )) && [[ "$CLX_PROFILE_READY" == "1" && "$CLX_ALLOW_MISSING" != "1" ]]; then
     local compatibility_output compatibility_code
@@ -615,25 +797,69 @@ clx() {
     esac
   fi
 
+  # A workspace keeps only the MCP servers it lists: they run outside the sandbox.
+  if [[ -n "$workspace" ]]; then
+    local -a ws_mcp kept
+    ws_mcp=("${(@f)$(command node "$_CLX_SOURCE_DIR/scripts/workspace.mjs" mcp "$workspaces_file" "$workspace")}") || return 1
+    ws_mcp=("${(@)ws_mcp:#}")
+    kept=("${(@)mcp_names:*ws_mcp}")
+    (( ${#kept[@]} < ${#mcp_names[@]} )) && print -r -- "clx: workspace '$workspace' drops MCP: ${(j:, :)${mcp_names:|kept}}"
+    mcp_names=("${kept[@]}")
+  fi
   _clx_mcp_config_json "$catalog" "${mcp_names[@]}" > "$mcp_file"
   if [[ -f "$settings" ]]; then
     jq -s '.[0] * .[1]' "$settings" =(_clx_enabled_plugins_json "$catalog" "${enabled_ids[@]}") > "$settings_file"
   else
     jq -s '.[0] * .[1]' =(echo '{}') =(_clx_enabled_plugins_json "$catalog" "${enabled_ids[@]}") > "$settings_file"
   fi
+  if [[ -n "$workspace" ]]; then
+    local -a ws_folders
+    # Chrome is on in workspaces unless this launch passes --no-chrome.
+    [[ -z "$chrome" ]] && chrome=1
+    ws_folders=("${(@f)$(CLX_WORKSPACE_CHROME=$chrome command node "$_CLX_SOURCE_DIR/scripts/workspace.mjs" apply "$workspaces_file" "$workspace" "$settings_file" "$mcp_file" "$synth_root" "$prompt_file")}") || return 1
+    ws_folders=("${(@)ws_folders:#}")
+    ws_start="${ws_folders[1]}"
+    # The session can't reach GitHub, so refresh branches and commits now, as you.
+    _clx_workspace_fetch "${ws_folders[@]}"
+  fi
 
-  local -a effort_args prompt_args
+  local -a effort_args prompt_args ws_args
   [[ -n "$effort" ]] && effort_args=(--effort "$effort")
+  # Chrome acts as your signed-in browser, outside the sandbox. Without a flag, normal
+  # sessions follow Claude Code's own setting; with --no-chrome a workspace also denies it.
+  if [[ "$chrome" == 1 ]]; then
+    ws_args=(--chrome)
+    [[ -n "$workspace" ]] && print -ru2 -- "clx: Chrome is on: your signed-in browser can reach sites and repos beyond this workspace. Use --no-chrome to lock it."
+  elif [[ "$chrome" == 0 ]]; then
+    ws_args=(--no-chrome)
+  fi
+  # --add-dir, not only the settings' additionalDirectories: Claude Code loads an added
+  # folder's project skills (.claude/skills) only when it comes in through the flag.
+  local ws_dir
+  for ws_dir in "${(@)ws_folders[2,-1]}"; do ws_args+=(--add-dir "$ws_dir"); done
   if [[ -n "$sys_prompt" ]]; then
     print -r -- "$sys_prompt" > "$prompt_file"
     prompt_args=(--append-system-prompt-file "$prompt_file")
   fi
 
-  print -r -- "clx → model=$model_id  effort=${effort:-default}  enabled=(${enabled_ids[*]:-none})  subset-dirs=${#plugin_dir_args[@]}  mcp=(${mcp_names[*]:-none})  prompt=$([[ -n "$sys_prompt" ]] && echo yes || echo no)"
-  "${CLX_CLAUDE_BIN:-claude}" --model "$model_id" "${effort_args[@]}" "${prompt_args[@]}" \
-    --strict-mcp-config --mcp-config "$mcp_file" \
-    --settings "$settings_file" \
-    "${plugin_dir_args[@]}"
+  if [[ -n "$workspace" ]]; then
+    _clx_project_skills "${ws_folders[@]}"
+  else
+    _clx_project_skills "$PWD"
+  fi
+  print -r -- "clx → model=$model_id  effort=${effort:-default}  enabled=(${enabled_ids[*]:-none})  subset-dirs=${#plugin_dir_args[@]}  mcp=(${mcp_names[*]:-none})  prompt=$([[ -n "$sys_prompt" ]] && echo yes || echo no)  workspace=${workspace:-none}"
+  # Subshell so a workspace's start folder doesn't change the caller's directory.
+  (
+    if [[ -n "$ws_start" ]]; then
+      builtin cd "$ws_start" || exit 1
+      # claude.ai connectors (Drive, Gmail, …) also run outside the sandbox.
+      export ENABLE_CLAUDEAI_MCP_SERVERS=false
+    fi
+    "${CLX_CLAUDE_BIN:-claude}" --model "$model_id" "${effort_args[@]}" "${prompt_args[@]}" "${ws_args[@]}" \
+      --strict-mcp-config --mcp-config "$mcp_file" \
+      --settings "$settings_file" \
+      "${plugin_dir_args[@]}"
+  )
 
   rm -rf "$mcp_file" "$settings_file" "$synth_root" "$prompt_file"
   trap - EXIT INT TERM
@@ -645,8 +871,13 @@ _clx_completion() {
   local clx_dir="${CLX_DIR:-$HOME/.claude/clx}"
   local presets_file="${CLX_PRESETS:-$clx_dir/presets.json}"
   local -a names
+  if [[ "${words[CURRENT-1]}" == (-w|--workspace) ]]; then
+    names=("${(@f)$(jq -r '.workspaces // {} | keys[]' "${CLX_WORKSPACES:-$clx_dir/workspaces.json}" 2>/dev/null)}")
+    compadd -a names
+    return
+  fi
   names=("${(@f)$(_clx_preset_names "$presets_file")}"); names=("${(@)names:#}")
-  names+=("prompts")
+  names+=("prompts" "workspaces")
   compadd -a names
 }
 if (( $+functions[compdef] )); then
