@@ -57,7 +57,7 @@ async function chooseProfile(manager) {
   });
   await manager.select(name);
 }
-const help = `CLX — Claude Code launcher and skill constellation\n\n  clx ui [--no-open] [--port 0] [--config-dir PATH]\n  clx update                         Install the latest stable release\n  clx --version                      Show the installed version\n  clx init [--force] [--config-dir PATH] [--claude-config-dir PATH]\n  clx [--profile NAME] [preset name]    Launch Claude in this terminal\n\nUI saves use the same presets.json as the terminal launcher.\nRequires Node 20+. Terminal launch/discovery also needs zsh, jq, gum and Claude Code.\nConfig: CLX_DIR, CLX_CATALOG, CLX_PRESETS; default ~/.claude/clx.\n`;
+const help = `CLX — Claude Code launcher and skill constellation\n\n  clx ui [--no-open] [--port 0] [--config-dir PATH]\n  clx update                         Install the latest stable release\n  clx --version                      Show the installed version\n  clx init [--force] [--config-dir PATH] [--claude-config-dir PATH]\n  clx [--profile NAME] [-w WORKSPACE] [--no-chrome] [preset name]  Launch Claude in this terminal\n  clx workspaces                     Create, edit, rename and delete workspaces\n\nUI saves use the same presets.json as the terminal launcher.\nRequires Node 20+. Terminal launch/discovery also needs zsh, jq, gum and Claude Code.\nConfig: CLX_DIR, CLX_CATALOG, CLX_PRESETS; default ~/.claude/clx.\n`;
 function run(command, argv, env = process.env) {
   const child = spawn(command, argv, { stdio: "inherit", env });
   child.on("error", (e) => {

@@ -141,7 +141,52 @@ clx ui
 
 `--config-dir` means **where CLX stores its own shared presets and profiles**; `--claude-config-dir` means **which Claude configuration to discover**. Custom profiles read their own `.claude.json` for MCP discovery. The default `~/.claude` profile retains the usual `~/.claude.json` location. CLX does not copy credentials or change profile configuration files.
 
+Project skills (`.claude/skills` in a repo) aren't part of presets: Claude Code loads them itself from the folder a session starts in and its parents, up to the git repo root. At launch, clx lists the ones it finds, e.g. `clx: project skills from ui-components: engage-web-spec-architecture`, so you can see what's loaded beyond the preset.
+
 When choosing a preset in the terminal, **model and effort only (this launch)** changes just those two settings and launches immediately with the preset’s existing skills, integrations, and prompt. The saved preset stays unchanged.
+
+## Workspaces: scope a session to a few folders
+
+A workspace limits a session to a few folders, independent of the preset. Presets choose the tools; workspaces choose the code. Define them in `~/.claude/clx/workspaces.json` (or `CLX_WORKSPACES`):
+
+```json
+{
+  "workspaces": {
+    "present": {
+      "start": "~/Documents/code/org/present-service",
+      "dirs": ["~/Documents/code/org/ui-components"],
+      "mcp": ["context7"]
+    }
+  }
+}
+```
+
+Manage them with `clx workspaces`, which works like `clx prompts`: create a workspace (name, start folder, extra folders, allowed MCP servers), edit it, open all its settings in your editor, rename or delete it. Every save is checked first: missing folders and unknown settings are refused, so a typo can't leave a workspace weaker than intended. Deleting a workspace never touches its folders. You can also edit the file by hand.
+
+Launch with `clx -w present Investigate` (or `--workspace present`), or pick the workspace in the menu after the preset. `clx <preset>` without `-w` stays unscoped. Before launching, clx runs `git fetch` in each workspace folder that is a clone, so the session starts with the latest branches and commits. Claude starts in `start`, with `dirs` added. Everything else is off limits:
+
+- **Files:** everything in your home folder outside the workspace folders is denied to Claude's file tools and subagents. That includes other projects wherever they live, other projects' Claude history, shared plans and scratch space. Skills stay readable. The list is generated at each launch, so new folders are covered automatically.
+- **Shell commands:** Claude Code's sandbox is on, and Claude can't run commands outside it. The shell can read the workspace folders and common toolchain folders (Node, Bun, Deno, .NET, JVM, Python/pyenv/conda, Go, Rust, Ruby, Dart/Flutter, asdf, the Android SDK), not the rest of your home folder. If a build fails with "Operation not permitted" on a tool's folder, add it under `"allowRead"`.
+- **Network:** shell commands have no network access by default, and GitHub is always blocked. The allowlist is strict, so auto mode can't widen it command by command.
+- **Tools that act outside the sandbox are removed:** claude.ai connectors, cloud routines, messaging other Claude sessions, and WebFetch. A hook refuses cloud (remote) subagents. MCP servers are limited to the workspace's `"mcp"` list.
+- **Its own limits:** Claude can't edit the settings clx generated, Claude or project settings, hooks, `.mcp.json`, git hooks, or programs in `/opt/homebrew` and `/usr/local`.
+
+Workspaces need Claude Code 2.1.281 or newer. Older versions silently ignore some of the sandbox settings, so clx refuses to launch a workspace on them and says why. Launches without `-w` aren't affected.
+
+Options per workspace:
+
+| Key | Effect |
+| --- | --- |
+| `"network": ["api.nuget.org"]` | Domains shell commands may reach, e.g. for package restore |
+| `"allowRead": ["~/.docker"]` | Extra folders the shell may read |
+| `"mcp": ["context7"]` | MCP servers kept from the preset (default: none) |
+| `"web": true` | Keep WebFetch |
+| `"github": true` | Open GitHub to shell commands (see below) |
+| `"fence": ["/Volumes/code"]` | Extra roots to hide beyond the home folder |
+
+**Chrome is on by default.** The Chrome integration is your signed-in browser and runs outside the sandbox, so with it on a session can reach any site or repo your browser can, beyond the workspace. clx notes this at each workspace launch. `clx -w present --no-chrome Investigate` locks it for that launch: Chrome is turned off and its tools are denied. Everything else stays locked either way. Without `-w`, `--chrome` and `--no-chrome` simply turn the integration on or off.
+
+**GitHub:** `"github": true` opens GitHub to shell commands, and `gh` and `git` then use your normal login, which can reach every repo you can. A local sandbox can't limit that, so keep GitHub closed when the scope must hold, and push or open PRs yourself.
 
 ## Using the UI
 
