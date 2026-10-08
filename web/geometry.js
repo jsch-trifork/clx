@@ -1,221 +1,126 @@
-// Each chain shares its fork with another chain: branches split at varied depths.
-const chains = [
-  [
-    [680, 486],
-    [784, 433],
-    [819, 368],
-    [850, 299],
-    [880, 255],
-  ],
-  [
-    [850, 299],
-    [914, 278],
-    [987, 216],
-  ],
-  [
-    [914, 278],
-    [1037, 240],
-    [1069, 200],
-    [1118, 181],
-  ],
-  [
-    [1037, 240],
-    [1097, 234],
-    [1172, 259],
-    [1239, 221],
-    [1265, 182],
-  ],
-  [
-    [784, 433],
-    [848, 421],
-    [892, 378],
-    [940, 359],
-    [1011, 369],
-  ],
-  [
-    [1011, 369],
-    [1041, 332],
-    [1086, 319],
-    [1125, 303],
-  ],
-  [
-    [1011, 369],
-    [1056, 398],
-    [1109, 367],
-    [1162, 369],
-    [1213, 333],
-    [1287, 304],
-    [1377, 236],
-    [1446, 163],
-    [1526, 120],
-    [1635, 91],
-  ],
-  [
-    [1162, 369],
-    [1204, 404],
-    [1244, 415],
-    [1314, 398],
-    [1373, 406],
-    [1469, 380],
-    [1586, 411],
-  ],
-  [
-    [680, 486],
-    [801, 477],
-    [882, 456],
-    [938, 483],
-    [997, 489],
-    [1045, 476],
-    [1118, 472],
-    [1161, 496],
-    [1201, 522],
-  ],
-  [
-    [1201, 522],
-    [1265, 556],
-    [1297, 531],
-    [1337, 519],
-    [1390, 505],
-    [1470, 535],
-    [1553, 500],
-    [1683, 457],
-  ],
-  [
-    [1265, 556],
-    [1320, 596],
-    [1367, 625],
-    [1424, 631],
-    [1495, 624],
-    [1597, 672],
-  ],
-  [
-    [801, 477],
-    [860, 536],
-    [910, 560],
-    [969, 580],
-    [1050, 641],
-  ],
-  [
-    [1050, 641],
-    [1138, 658],
-    [1186, 640],
-  ],
-  [
-    [1050, 641],
-    [1100, 702],
-    [1153, 729],
-    [1213, 754],
-    [1244, 756],
-  ],
-  [
-    [680, 486],
-    [784, 542],
-    [795, 582],
-    [825, 612],
-    [859, 650],
-  ],
-  [
-    [859, 650],
-    [908, 667],
-    [947, 650],
-  ],
-  [
-    [859, 650],
-    [901, 700],
-    [960, 728],
-    [998, 720],
-  ],
-  [
-    [1153, 729],
-    [1294, 702],
-    [1353, 731],
-    [1414, 771],
-    [1483, 803],
-  ],
-];
-const skillCoords = [
-  [850, 299],
-  [987, 216],
-  [1118, 181],
-  [1097, 234],
-  [1239, 221],
-  [1265, 182],
-  [1377, 236],
-  [1446, 163],
-  [1526, 120],
-  [892, 378],
-  [940, 359],
-  [1041, 332],
-  [1086, 319],
-  [1125, 303],
-  [1162, 369],
-  [1244, 415],
-  [1314, 398],
-  [882, 456],
-  [997, 489],
-  [1118, 472],
-  [1201, 522],
-  [1337, 519],
-  [1390, 505],
-  [1470, 535],
-  [1553, 500],
-  [1683, 457],
-  [860, 536],
-  [910, 560],
-  [969, 580],
-  [1050, 641],
-  [1138, 658],
-  [1186, 640],
-  [1153, 729],
-  [960, 728],
-  [1483, 803],
-];
+// Skills grow as a fan of rings around their hub. Every edge joins two adjacent
+// rings and siblings keep their angular order, so branches can never cross.
+export const ROOT = [680, 486];
 
-// Keep the reference's organic silhouette, but occupy only the space needed by
-// this family's real skills. Unused routing vertices are not rendered as nodes.
-export function buildSkillTree(skills) {
-  const root = [680, 486];
-  const key = (p) => p.join(",");
-  const occupied = new Set(
-    [...skillCoords]
-      .sort(
-        (a, b) =>
-          a[0] -
-          680 +
-          Math.abs(a[1] - 486) * 0.45 -
-          (b[0] - 680 + Math.abs(b[1] - 486) * 0.45),
-      )
-      .slice(0, skills.length)
-      .map(key),
+function trunkSizes(n) {
+  const k = n <= 2 ? n : Math.min(5, Math.round(Math.sqrt(n)));
+  const sizes = Array(k).fill(Math.floor(n / k));
+  // Spare skills go to the middle trunks so the fan stays balanced.
+  const order = [...sizes.keys()].sort(
+    (a, b) => Math.abs(a - (k - 1) / 2) - Math.abs(b - (k - 1) / 2),
   );
-  const coordinates = skillCoords.filter((p) => occupied.has(key(p)));
-  while (coordinates.length < skills.length) {
-    const i = coordinates.length - skillCoords.length;
-    coordinates.push([1800 + Math.floor(i / 4) * 145, 260 + (i % 4) * 155]);
+  for (let i = 0; i < n % k; i++) sizes[order[i]]++;
+  return sizes;
+}
+
+// Short remainders continue as a chain, except right after the hub, where a pair
+// forks so small families branch out; longer remainders fork into two or three.
+function split(rest, depth) {
+  if (rest <= 1 || (rest === 2 && depth > 1)) return [rest];
+  const parts = rest >= 12 ? 3 : 2;
+  return Array.from(
+    { length: parts },
+    (_, i) => Math.floor(rest / parts) + (i < rest % parts ? 1 : 0),
+  );
+}
+
+// Pre-order nodes; each has depth (1 = first ring), parent index (-1 = hub) and
+// u in [0, 1], its position across the fan.
+export function growTree(n) {
+  const nodes = [];
+  const grow = (size, depth, parent) => {
+    const index = nodes.push({ depth, parent, children: [] }) - 1;
+    if (size > 1)
+      split(size - 1, depth).forEach((part) =>
+        nodes[index].children.push(grow(part, depth + 1, index)),
+      );
+    return index;
+  };
+  const trunks = trunkSizes(n).map((size) => grow(size, 1, -1));
+  const leaves = (i) =>
+    nodes[i].children.length
+      ? nodes[i].children.reduce((sum, c) => sum + leaves(c), 0)
+      : 1;
+  const assign = (list, u0, u1) => {
+    const total = list.reduce((sum, i) => sum + leaves(i), 0);
+    let at = u0;
+    list.forEach((i) => {
+      const next = at + ((u1 - u0) * leaves(i)) / total;
+      nodes[i].u = (at + next) / 2;
+      assign(nodes[i].children, at, next);
+      at = next;
+    });
+  };
+  assign(trunks, 0, 1);
+  return nodes;
+}
+
+// range(t) gives a ring's [from, to] angles, t running 0 (first ring) to 1 (last).
+// Rings sit at least step apart and far enough out that neighbours are gap apart.
+export function layoutFan(skills, { center, inner, step, gap, range }) {
+  const nodes = growTree(skills.length);
+  const rings = Math.max(1, ...nodes.map((node) => node.depth));
+  const ringRange = (depth) => range(rings > 1 ? (depth - 1) / (rings - 1) : 0);
+  const radii = [];
+  for (let depth = 1; depth <= rings; depth++) {
+    const u = nodes
+      .filter((node) => node.depth === depth)
+      .map((node) => node.u)
+      .sort((a, b) => a - b);
+    const closest = Math.min(...u.slice(1).map((v, i) => v - u[i]));
+    const [from, to] = ringRange(depth);
+    const needed = Number.isFinite(closest)
+      ? gap / (2 * Math.sin((Math.abs(to - from) * closest) / 2))
+      : 0;
+    const previous = radii.at(-1);
+    radii.push(
+      Math.max(previous === undefined ? inner : previous + step, needed),
+    );
   }
-  const points = skills.map((s, i) => ({
-    x: coordinates[i][0],
-    y: coordinates[i][1],
-    s,
-  }));
-  const parents = new Map(
-    chains.flatMap((chain) => chain.slice(1).map((p, i) => [key(p), chain[i]])),
-  );
-  const edges = coordinates.map((p, i) => {
-    let parent = parents.get(key(p));
-    if (i >= skillCoords.length) {
-      const previous = coordinates.slice(0, i).filter((q) => q[0] < p[0]);
-      parent = previous.sort(
-        (a, b) =>
-          Math.abs(a[1] - p[1]) +
-          (p[0] - a[0]) * 0.3 -
-          (Math.abs(b[1] - p[1]) + (p[0] - b[0]) * 0.3),
-      )[0];
-    } else {
-      while (parent && key(parent) !== key(root) && !occupied.has(key(parent)))
-        parent = parents.get(key(parent));
-    }
-    return [parent || root, p];
+  const points = nodes.map((node, i) => {
+    const [from, to] = ringRange(node.depth);
+    const angle = from + (to - from) * node.u,
+      radius = radii[node.depth - 1];
+    return {
+      x: center[0] + Math.cos(angle) * radius,
+      y: center[1] + Math.sin(angle) * radius,
+      s: skills[i],
+      parent: node.parent,
+    };
   });
-  return { points, edges };
+  return { points, rings };
+}
+
+// The family view reads left to right: one column per ring, labels in the gap.
+// Rows keep their order between columns, so these branches cannot cross either.
+export function buildSkillTree(skills) {
+  const nodes = growTree(skills.length);
+  const columns = Math.max(0, ...nodes.map((node) => node.depth));
+  const longest = Math.max(0, ...skills.map((s) => (s.key || "").length));
+  // The first column clears the family title; later ones fit the widest label.
+  const first = 170,
+    width = Math.min(320, 80 + longest * 7.5),
+    row = 52;
+  const heights = [];
+  for (let depth = 1; depth <= columns; depth++) {
+    const u = nodes
+      .filter((node) => node.depth === depth)
+      .map((node) => node.u)
+      .sort((a, b) => a - b);
+    const closest = Math.min(...u.slice(1).map((v, i) => v - u[i]));
+    const needed = Number.isFinite(closest) ? row / closest : 0;
+    heights.push(Math.min(760, Math.max(heights.at(-1) || 0, needed)));
+  }
+  const points = nodes.map((node, i) => ({
+    x: ROOT[0] + first + (node.depth - 1) * width,
+    y: ROOT[1] + (node.u - 0.5) * heights[node.depth - 1],
+    s: skills[i],
+  }));
+  return {
+    points,
+    edges: nodes.map((node, i) => {
+      const from = points[node.parent];
+      return [from ? [from.x, from.y] : ROOT, [points[i].x, points[i].y]];
+    }),
+  };
 }
