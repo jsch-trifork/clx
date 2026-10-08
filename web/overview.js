@@ -91,6 +91,98 @@ export function radialSkillTree(skills, hub, count, neighbours = []) {
   return { points, edges, rings };
 }
 
+// Lucide icon names that suit a family's name, in order of preference.
+const iconHints = [
+  [
+    ["design", "ux", "taste", "brand", "style"],
+    ["palette", "brush", "pen-tool"],
+  ],
+  [
+    ["ui", "frontend", "web"],
+    ["layout-template", "component"],
+  ],
+  [
+    ["devflow", "git", "flow", "workflow"],
+    ["git-branch", "workflow"],
+  ],
+  [
+    ["ops", "monitor", "observability"],
+    ["activity", "chart-line"],
+  ],
+  [
+    ["explain", "docs", "guide"],
+    ["presentation", "book-open"],
+  ],
+  [
+    ["superpowers", "power", "skills"],
+    ["zap", "rocket"],
+  ],
+  [["swift", "ios", "mobile", "app"], ["smartphone"]],
+  [
+    ["personal", "local", "me"],
+    ["user", "feather"],
+  ],
+  [
+    ["21st", "components", "component"],
+    ["component", "blocks"],
+  ],
+  [
+    ["am", "work", "roadmap", "sprint"],
+    ["kanban", "briefcase"],
+  ],
+  [["review", "audit", "security"], ["shield"]],
+  [
+    ["code", "codex", "dev"],
+    ["code", "terminal"],
+  ],
+];
+const iconPool = [
+  "triangle",
+  "hexagon",
+  "diamond",
+  "sparkles",
+  "orbit",
+  "pentagon",
+  "octagon",
+  "star",
+  "atom",
+  "gem",
+  "compass",
+  "sun",
+  "moon",
+  "leaf",
+  "anchor",
+  "puzzle",
+  "telescope",
+  "layers",
+  "waypoints",
+  "flower",
+];
+
+// One icon per family: a fitting one when its name suggests it, otherwise the
+// next unused shape. Icons only repeat once every pool icon is taken.
+export function familyIcons(names) {
+  const used = new Set();
+  const take = (icon) => (used.add(icon), icon);
+  const tokens = names.map((name) =>
+    String(name)
+      .toLowerCase()
+      .split(/[^a-z0-9]+/),
+  );
+  const icons = tokens.map((words) => {
+    for (const [keys, choices] of iconHints)
+      if (keys.some((k) => words.includes(k)))
+        for (const icon of choices) if (!used.has(icon)) return take(icon);
+    return null;
+  });
+  let next = 0;
+  return icons.map((icon) => {
+    if (icon) return icon;
+    const free = iconPool.find((p) => !used.has(p));
+    return free ? take(free) : iconPool[next++ % iconPool.length];
+  });
+}
+
 export function familyColors(count) {
   const base = [
     "#b39be5",

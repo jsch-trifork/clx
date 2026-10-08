@@ -1,4 +1,9 @@
-import { familyLayout, familyColors, radialSkillTree } from "./overview.js";
+import {
+  familyLayout,
+  familyColors,
+  familyIcons,
+  radialSkillTree,
+} from "./overview.js";
 import { buildSkillTree, ROOT } from "./geometry.js";
 import { strokeBranch, strokeFan } from "./curve.js";
 import { createCorePainter } from "./core.js";
@@ -68,6 +73,7 @@ import { createCorePainter } from "./core.js";
           "'": "&#39;",
         })[c],
     );
+  const iconOf = (i) => familyIcons(DATA.families.map((f) => f.name))[i];
   const fam = () => DATA.families[family],
     isOn = (s) => models[preset].has(s.id),
     short = (s) => s.key;
@@ -369,7 +375,9 @@ import { createCorePainter } from "./core.js";
       esc(fam().name) +
       "</b><small>" +
       fam().skills.length +
-      ' skills · one family</small></span><span class="glyph"><i data-lucide="hexagon"></i></span>';
+      ' skills · one family</small></span><span class="glyph"><i data-lucide="' +
+      iconOf(family) +
+      '"></i></span>';
     main.setAttribute("aria-label", fam().name + " family options");
     main.onclick = () => {
       if (!editMode) {
@@ -393,7 +401,9 @@ import { createCorePainter } from "./core.js";
     sat.type = "button";
     sat.className = "family satellite";
     sat.innerHTML =
-      '<span class="glyph"><i data-lucide="triangle"></i></span><span class="caption"><b>' +
+      '<span class="glyph"><i data-lucide="' +
+      iconOf(family === 0 ? Math.min(1, DATA.families.length - 1) : 0) +
+      '"></i></span><span class="caption"><b>' +
       esc(
         DATA.families[family === 0 ? Math.min(1, DATA.families.length - 1) : 0]
           ?.name || "",
@@ -1172,9 +1182,7 @@ import { createCorePainter } from "./core.js";
       b.style.color = g.color;
       b.innerHTML =
         '<span class="glyph"><i data-lucide="' +
-        ["triangle", "hexagon", "palette", "sparkles", "orbit", "diamond"][
-          g.i % 6
-        ] +
+        iconOf(g.i) +
         '"></i></span><span class="caption"><b>' +
         esc(g.f.name) +
         "</b><small>" +
