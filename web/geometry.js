@@ -55,32 +55,31 @@ export function growTree(n) {
   return nodes;
 }
 
-// range(t) gives a ring's [from, to] angles, t running 0 (first ring) to 1 (last).
-// Rings sit at least step apart and far enough out that neighbours are gap apart.
+// range(t, radius) gives a ring's [from, to] angles, t running 0 (first ring) to 1
+// (last). Rings sit at least step apart and far enough out that neighbours are
+// gap apart.
 export function layoutFan(skills, { center, inner, step, gap, range }) {
   const nodes = growTree(skills.length);
-  const rings = Math.max(1, ...nodes.map((node) => node.depth));
-  const ringRange = (depth) => range(rings > 1 ? (depth - 1) / (rings - 1) : 0);
-  const radii = [];
-  for (let depth = 1; depth <= rings; depth++) {
+  const depths = Math.max(1, ...nodes.map((node) => node.depth));
+  const rings = [];
+  for (let depth = 1; depth <= depths; depth++) {
+    const t = depths > 1 ? (depth - 1) / (depths - 1) : 0;
     const u = nodes
       .filter((node) => node.depth === depth)
       .map((node) => node.u)
       .sort((a, b) => a - b);
     const closest = Math.min(...u.slice(1).map((v, i) => v - u[i]));
-    const [from, to] = ringRange(depth);
+    let radius = rings.length ? rings.at(-1).radius + step : inner;
+    let [from, to] = range(t, radius);
     const needed = Number.isFinite(closest)
       ? gap / (2 * Math.sin((Math.abs(to - from) * closest) / 2))
       : 0;
-    const previous = radii.at(-1);
-    radii.push(
-      Math.max(previous === undefined ? inner : previous + step, needed),
-    );
+    if (needed > radius) [radius, [from, to]] = [needed, range(t, needed)];
+    rings.push({ radius, from, to });
   }
   const points = nodes.map((node, i) => {
-    const [from, to] = ringRange(node.depth);
-    const angle = from + (to - from) * node.u,
-      radius = radii[node.depth - 1];
+    const { radius, from, to } = rings[node.depth - 1],
+      angle = from + (to - from) * node.u;
     return {
       x: center[0] + Math.cos(angle) * radius,
       y: center[1] + Math.sin(angle) * radius,
@@ -91,36 +90,31 @@ export function layoutFan(skills, { center, inner, step, gap, range }) {
   return { points, rings };
 }
 
-// The family view reads left to right: one column per ring, labels in the gap.
-// Rows keep their order between columns, so these branches cannot cross either.
+const deg = Math.PI / 180;
+const lerp = (a, b, t) => a + (b - a) * t;
+
+// The family view is a half-fan to the right of the hub. Rings are spaced for the
+// widest label, and outer rings flatten so the fan stays within the screen height.
 export function buildSkillTree(skills) {
-  const nodes = growTree(skills.length);
-  const columns = Math.max(0, ...nodes.map((node) => node.depth));
   const longest = Math.max(0, ...skills.map((s) => (s.key || "").length));
-  // The first column clears the family title; later ones fit the widest label.
-  const first = 170,
-    width = Math.min(320, 80 + longest * 7.5),
-    row = 52;
-  const heights = [];
-  for (let depth = 1; depth <= columns; depth++) {
-    const u = nodes
-      .filter((node) => node.depth === depth)
-      .map((node) => node.u)
-      .sort((a, b) => a - b);
-    const closest = Math.min(...u.slice(1).map((v, i) => v - u[i]));
-    const needed = Number.isFinite(closest) ? row / closest : 0;
-    heights.push(Math.min(760, Math.max(heights.at(-1) || 0, needed)));
-  }
-  const points = nodes.map((node, i) => ({
-    x: ROOT[0] + first + (node.depth - 1) * width,
-    y: ROOT[1] + (node.u - 0.5) * heights[node.depth - 1],
-    s: skills[i],
-  }));
-  return {
-    points,
-    edges: nodes.map((node, i) => {
-      const from = points[node.parent];
-      return [from ? [from.x, from.y] : ROOT, [points[i].x, points[i].y]];
-    }),
-  };
+  const { points, rings } = layoutFan(skills, {
+    center: ROOT,
+    inner: 160,
+    step: Math.min(320, 80 + longest * 7.5),
+    gap: 50,
+    range: (t, radius) => {
+      const fit = Math.asin(Math.min(1, 300 / radius));
+      // The first ring stays below the family title, then the fan opens up.
+      return [
+        -Math.min(fit, lerp(10, 60, t) * deg),
+        Math.min(fit, lerp(58, 60, t) * deg),
+      ];
+    },
+  });
+  const edges = points.map(({ parent }, i) => {
+    const from = points[parent];
+    return [from ? [from.x, from.y] : ROOT, [points[i].x, points[i].y]];
+  });
+  points.forEach((p) => delete p.parent);
+  return { points, edges, rings };
 }

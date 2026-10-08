@@ -45,7 +45,7 @@ export function familyLayout(count, width, height, skillCounts = []) {
 // The same ring fan as the family view. neighbours holds the skill counts of the
 // families on the -angle and +angle sides; a bigger family takes more of the gap.
 export function radialSkillTree(skills, hub, count, neighbours = []) {
-  if (!skills.length) return { points: [], edges: [] };
+  if (!skills.length) return { points: [], edges: [], rings: [] };
   // reach estimates the outer ring; the rings themselves space out as needed.
   const inner = 80,
     reachOf = (n) => Math.min(190, 60 + n * 4),
@@ -67,7 +67,7 @@ export function radialSkillTree(skills, hub, count, neighbours = []) {
     );
   };
   const [before, after] = [open(neighbours[0]), open(neighbours[1])];
-  const { points } = layoutFan(skills, {
+  const { points, rings } = layoutFan(skills, {
     center: [hub.x, hub.y],
     inner,
     step: 34,
@@ -88,7 +88,7 @@ export function radialSkillTree(skills, hub, count, neighbours = []) {
     };
   });
   points.forEach((p) => delete p.parent);
-  return { points, edges };
+  return { points, edges, rings };
 }
 
 export function familyColors(count) {

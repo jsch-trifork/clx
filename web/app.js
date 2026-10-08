@@ -30,7 +30,8 @@ import { createCorePainter } from "./core.js";
   const motionCanvas = root.querySelector(".core-motion");
   const corePainter = createCorePainter(motionCanvas);
   const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
-  let baseEdges = [];
+  let baseEdges = [],
+    familyRings = [];
   let namingFirstPreset = false;
   let profileChosen = false;
   let editMode = false,
@@ -128,33 +129,22 @@ import { createCorePainter } from "./core.js";
           ...points.filter((q) => q !== p).map(nodeBox),
           ...labels,
         ];
+        // Nodes keep their place in the tree; only the label looks for room.
+        const x = bx,
+          y = by;
         let result;
-        for (let shiftX = 0; shiftX <= 1600 && !result; shiftX += 65) {
-          for (const shiftY of [
-            0, -32, 32, -64, 64, -96, 96, -128, 128, -160, 160, -192, 192,
-          ]) {
-            const x = bx + shiftX,
-              y = by + shiftY;
-            if (y < 155 || y > h - 125) continue;
-            const circle = { x: x - 22, y: y - 22, width: 44, height: 44 };
-            if (obstacles.some((b) => overlap(circle, b))) continue;
-            for (const [dx, dy] of anchors) {
-              const box = { x: x + dx, y: y + dy, width, height };
-              if (
-                box.y < 125 ||
-                box.y + height > h - 100 ||
-                obstacles.some((b) => overlap(box, b))
-              )
-                continue;
-              result = { x, y, dx, dy, box };
-              break;
-            }
-            if (result) break;
-          }
+        for (const [dx, dy] of anchors) {
+          const box = { x: x + dx, y: y + dy, width, height };
+          if (
+            box.y < 125 ||
+            box.y + height > h - 100 ||
+            obstacles.some((b) => overlap(box, b))
+          )
+            continue;
+          result = { x, y, dx, dy, box };
+          break;
         }
-        if (!result) {
-          const x = Math.max(bx, labelsRight + 45),
-            y = Math.max(155, Math.min(h - 125, by));
+        if (!result)
           result = {
             x,
             y,
@@ -162,20 +152,10 @@ import { createCorePainter } from "./core.js";
             dy: -12,
             box: { x: x + 20, y: y - 12, width, height },
           };
-        }
-        p.x = (result.x - offset) / scale;
-        p.y = (result.y - (h - 992 * scale) / 2) / scale;
         p.label = { dx: result.dx, dy: result.dy, width, height };
         labels.push(result.box);
         labelsRight = Math.max(labelsRight, result.box.x + width);
       });
-    const relocated = new Map(
-      points.map((p) => [p.anchor.join(","), [p.x, p.y]]),
-    );
-    edges = baseEdges.map(([a, b]) => [
-      relocated.get(a.join(",")) || a,
-      relocated.get(b.join(",")) || b,
-    ]);
   }
   function toggleSkill(s, f = fam()) {
     const selection = draft.record.skillPlugins[f.id] || { mode: "off" };
@@ -344,7 +324,7 @@ import { createCorePainter } from "./core.js";
     }
     root.querySelectorAll("[data-zoom]").forEach((b) => (b.hidden = true));
     const skills = [...fam().skills];
-    ({ points, edges } = buildSkillTree(skills));
+    ({ points, edges, rings: familyRings } = buildSkillTree(skills));
     baseEdges = edges;
     points.forEach((p) => (p.anchor = [p.x, p.y]));
     layoutLabels();
@@ -525,6 +505,17 @@ import { createCorePainter } from "./core.js";
       points.map((p) => [[p.x, p.y].join(","), nodeRadius() + 2]),
     );
     routeRadii.set(rootKey, 54 * scale);
+    // Faint orbit rings mark each depth of the tree.
+    ctx.save();
+    ctx.setLineDash([2, 5]);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = colors[family] + "29";
+    familyRings.forEach(({ radius, from, to }) => {
+      ctx.beginPath();
+      ctx.arc(X(ROOT[0]), Y(ROOT[1]), radius * scale, from - 0.12, to + 0.12);
+      ctx.stroke();
+    });
+    ctx.restore();
     ctx.save();
     ctx.beginPath();
     ctx.rect(0, 0, w, h);
@@ -537,13 +528,15 @@ import { createCorePainter } from "./core.js";
     });
     ctx.clip("evenodd");
     edges.forEach((e) =>
-      line(
-        e[0],
-        e[1],
+      strokeFan(
+        ctx,
+        [X(ROOT[0]), Y(ROOT[1])],
+        [X(e[0][0]), Y(e[0][1])],
+        [X(e[1][0]), Y(e[1][1])],
         activeRoutes.has(e[0].join(",")) && activeRoutes.has(e[1].join(","))
-          ? colors[family] + "65"
-          : "#88839840",
-        1,
+          ? colors[family] + "b3"
+          : "#8883985c",
+        1.1,
         routeRadii.get(e[0].join(",")) || 0,
         routeRadii.get(e[1].join(",")) || 0,
       ),
@@ -1030,6 +1023,7 @@ import { createCorePainter } from "./core.js";
             DATA.families[(g.i + 1) % n].skills.length,
           ]);
         g.treeEdges = tree.edges;
+        g.treeRings = tree.rings;
         tree.points.forEach((p) => {
           p.family = g.i;
           overviewNodes.push(p);
@@ -1275,6 +1269,18 @@ import { createCorePainter } from "./core.js";
       ctx.strokeStyle = g.color + "45";
       ctx.stroke();
       ctx.setLineDash([]);
+      if (g.treeRings) {
+        ctx.save();
+        ctx.setLineDash([2, 5]);
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = g.color + "29";
+        g.treeRings.forEach(({ radius: r, from, to }) => {
+          ctx.beginPath();
+          ctx.arc(x, y, r * overviewZoom, from - 0.12, to + 0.12);
+          ctx.stroke();
+        });
+        ctx.restore();
+      }
       if (g.treeEdges)
         g.treeEdges.forEach(({ a, b, p, q, fromHub }) => {
           const on = models[preset].has(p.s.id),
@@ -1285,13 +1291,18 @@ import { createCorePainter } from "./core.js";
             [OX(g.x), OY(g.y)],
             [OX(a[0]), OY(a[1])],
             [OX(b[0]), OY(b[1])],
-            lit ? g.color + "95" : "#c5bec460",
-            1,
+            lit ? g.color + "b3" : "#8883985c",
+            1.1,
             fromHub ? radius + 2 : r + 1,
             r + 1,
           );
-          if (on) dot(OX(p.x), OY(p.y), r, g.color);
-          else ring(OX(p.x), OY(p.y), r, "#d3cbd5a0", 0.8);
+          if (on) {
+            dot(OX(p.x), OY(p.y), r + 4, g.color, 0.16);
+            dot(OX(p.x), OY(p.y), r, g.color);
+          } else {
+            dot(OX(p.x), OY(p.y), r, "#1b1a2e");
+            ring(OX(p.x), OY(p.y), r, "#e0ddd6b3", 0.8);
+          }
         });
       g.branches.forEach((chain, branchIndex) => {
         let a =
