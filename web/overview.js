@@ -1,4 +1,4 @@
-import { buildSkillTree } from "./geometry.js";
+import { layoutFan } from "./geometry.js";
 // Hub positions are independent of selection so changing presets never moves groups.
 export function familyLayout(count, width, height, skillCounts = []) {
   const old = [
@@ -42,37 +42,53 @@ export function familyLayout(count, width, height, skillCounts = []) {
   };
 }
 
-// Preserve the topology of the expanded skill tree, including shared forks.
-export function radialSkillTree(skills, hub, count) {
-  const tree = buildSkillTree(skills);
-  if (!tree.points.length) return { points: [], edges: [] };
-  const extentX = Math.max(...tree.points.map((p) => p.x - 680));
-  const extentY = Math.max(1, ...tree.points.map((p) => Math.abs(p.y - 486)));
-  const sectorWidth =
-    2 * Math.sin(Math.PI / count) * (Math.max(280, count * 30) + 110) * 0.76;
-  const depth = Math.min(210, Math.max(130, 100 + skills.length * 2));
-  const transform = ([x, y]) => {
-    if (x === 680 && y === 486) return [hub.x, hub.y];
-    const reach = 46 + ((x - 680) / extentX) * depth;
-    const spread = (((y - 486) / extentY) * sectorWidth) / 2;
-    return [
-      hub.x + Math.cos(hub.angle) * reach - Math.sin(hub.angle) * spread,
-      hub.y + Math.sin(hub.angle) * reach + Math.cos(hub.angle) * spread,
-    ];
+// The same ring fan as the family view. neighbours holds the skill counts of the
+// families on the -angle and +angle sides; a bigger family takes more of the gap.
+export function radialSkillTree(skills, hub, count, neighbours = []) {
+  if (!skills.length) return { points: [], edges: [] };
+  // reach estimates the outer ring; the rings themselves space out as needed.
+  const inner = 80,
+    reachOf = (n) => Math.min(190, 60 + n * 4),
+    reach = reachOf(skills.length);
+  // A ray tilted past half the hub spacing meets its neighbour's ray; keep that
+  // meeting point beyond this fan's outer ring, sharing the gap by reach.
+  const ring = Math.max(280, count * 30),
+    half = Math.PI / count,
+    first = (30 * Math.PI) / 180;
+  const open = (neighbour = skills.length) => {
+    const share = (2 * reach) / (reach + reachOf(neighbour));
+    return Math.min(
+      (70 * Math.PI) / 180,
+      half +
+        0.85 *
+          Math.asin(
+            Math.min(1, (share * ring * Math.sin(half)) / (inner + reach + 40)),
+          ),
+    );
   };
-  const points = tree.points.map((p) => {
-    const [x, y] = transform([p.x, p.y]);
-    return { ...p, x, y };
+  const [before, after] = [open(neighbours[0]), open(neighbours[1])];
+  const { points } = layoutFan(skills, {
+    center: [hub.x, hub.y],
+    inner,
+    step: 34,
+    gap: 16,
+    range: (t) => [
+      hub.angle - Math.min(before, first + (before - first) * t),
+      hub.angle + Math.min(after, first + (after - first) * t),
+    ],
   });
-  return {
-    points,
-    edges: tree.edges.map(([a, b], i) => ({
-      a: transform(a),
-      b: transform(b),
-      p: points[i],
-      fromHub: a[0] === 680 && a[1] === 486,
-    })),
-  };
+  const edges = points.map((p) => {
+    const q = points[p.parent] || null;
+    return {
+      a: q ? [q.x, q.y] : [hub.x, hub.y],
+      b: [p.x, p.y],
+      p,
+      q,
+      fromHub: !q,
+    };
+  });
+  points.forEach((p) => delete p.parent);
+  return { points, edges };
 }
 
 export function familyColors(count) {

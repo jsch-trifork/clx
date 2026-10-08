@@ -83,3 +83,58 @@ test("large collection colors are unique and neighboring hues stay distinct, inc
     }
   }
 });
+test("overview fans never cross, stay apart from their neighbours and start near the hub", async () => {
+  const { fanPoint } = await import("../web/curve.js");
+  const sizes = [4, 7, 35, 14, 13, 13, 8, 15, 14, 7];
+  const layout = familyLayout(sizes.length, 1280, 860);
+  const fans = sizes.map((n, i) =>
+    radialSkillTree(
+      Array.from({ length: n }, (_, j) => ({ id: `f${i}-${j}` })),
+      layout.positions[i],
+      sizes.length,
+      [
+        sizes[(i + sizes.length - 1) % sizes.length],
+        sizes[(i + 1) % sizes.length],
+      ],
+    ),
+  );
+  const segments = [];
+  fans.forEach((fan, i) => {
+    const hub = layout.positions[i];
+    for (const e of fan.edges) {
+      if (e.fromHub)
+        assert(
+          Math.hypot(e.b[0] - hub.x, e.b[1] - hub.y) <= 100,
+          "short trunk",
+        );
+      const path = Array.from({ length: 41 }, (_, k) =>
+        fanPoint([hub.x, hub.y], e.a, e.b, k / 40),
+      );
+      for (let k = 1; k < path.length; k++)
+        segments.push({ edge: e, from: path[k - 1], to: path[k] });
+    }
+  });
+  const cross = (p, q, r, s) => {
+    const d = (a, b, c) =>
+      (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    return d(p, q, r) * d(p, q, s) < 0 && d(r, s, p) * d(r, s, q) < 0;
+  };
+  const shares = (x, y) =>
+    [x.a, x.b].some((u) =>
+      [y.a, y.b].some((v) => u[0] === v[0] && u[1] === v[1]),
+    );
+  for (let i = 0; i < segments.length; i++)
+    for (let j = i + 1; j < segments.length; j++) {
+      const s = segments[i],
+        t = segments[j];
+      if (s.edge === t.edge || shares(s.edge, t.edge)) continue;
+      assert(!cross(s.from, s.to, t.from, t.to), "branches cross");
+    }
+  const nodes = fans.flatMap((fan, i) => fan.points.map((p) => ({ ...p, i })));
+  for (let i = 0; i < nodes.length; i++)
+    for (let j = i + 1; j < nodes.length; j++)
+      assert(
+        Math.hypot(nodes[i].x - nodes[j].x, nodes[i].y - nodes[j].y) >= 15.9,
+        "nodes stack",
+      );
+});

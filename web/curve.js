@@ -67,3 +67,59 @@ export function strokeBranch(
   );
   ctx.stroke();
 }
+
+// A branch that leaves and arrives radially around center. Radius and angle both
+// move monotonically, so the curve stays inside the wedge between its endpoints.
+export function fanPoint(center, start, end, t) {
+  const polar = ([x, y]) => [
+    Math.hypot(x - center[0], y - center[1]),
+    Math.atan2(y - center[1], x - center[0]),
+  ];
+  const [r1, a1] = polar(end);
+  let [r0, a0] = polar(start);
+  if (r0 < 1e-6) a0 = a1;
+  let turn = a1 - a0;
+  turn -= Math.round(turn / (2 * Math.PI)) * 2 * Math.PI;
+  const r = r0 + (r1 - r0) * t,
+    a = a0 + turn * t * t * (3 - 2 * t);
+  return [center[0] + Math.cos(a) * r, center[1] + Math.sin(a) * r];
+}
+
+export function strokeFan(
+  ctx,
+  center,
+  start,
+  end,
+  color,
+  width = 1,
+  startRadius = 0,
+  endRadius = 0,
+) {
+  const at = (t) => fanPoint(center, start, end, t);
+  const distance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+  if (distance(start, end) <= startRadius + endRadius) return;
+  let low = 0,
+    high = 1;
+  for (let i = 0; i < 22; i++) {
+    const mid = (low + high) / 2;
+    if (distance(at(mid), start) < startRadius) low = mid;
+    else high = mid;
+  }
+  const from = startRadius ? high : 0;
+  low = 0;
+  high = 1;
+  for (let i = 0; i < 22; i++) {
+    const mid = (low + high) / 2;
+    if (distance(at(mid), end) > endRadius) low = mid;
+    else high = mid;
+  }
+  const to = endRadius ? low : 1;
+  if (from >= to) return;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.beginPath();
+  ctx.moveTo(...at(from));
+  for (let i = 1; i <= 32; i++)
+    ctx.lineTo(...at(from + ((to - from) * i) / 32));
+  ctx.stroke();
+}

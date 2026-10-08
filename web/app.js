@@ -1,6 +1,6 @@
 import { familyLayout, familyColors, radialSkillTree } from "./overview.js";
-import { buildSkillTree } from "./geometry.js";
-import { strokeBranch } from "./curve.js";
+import { buildSkillTree, ROOT } from "./geometry.js";
+import { strokeBranch, strokeFan } from "./curve.js";
 import { createCorePainter } from "./core.js";
 (() => {
   let DATA = {
@@ -515,18 +515,16 @@ import { createCorePainter } from "./core.js";
         "#b6adce",
         0.12 + rnd(i + 20) * 0.1,
       );
-    // The quiet routes are ownership paths, never skill prerequisites.
-    const activeRoutes = new Set(
-      points.filter((p) => isOn(p.s)).map((p) => p.x + "," + p.y),
-    );
-    for (let pass = 0; pass < 20; pass++)
-      edges.forEach((e) => {
-        if (activeRoutes.has(e[1].join(","))) activeRoutes.add(e[0].join(","));
-      });
+    // A route lights up only when both of its ends are selected (or it leaves the hub).
+    const rootKey = ROOT.join(",");
+    const activeRoutes = new Set([
+      rootKey,
+      ...points.filter((p) => isOn(p.s)).map((p) => p.x + "," + p.y),
+    ]);
     const routeRadii = new Map(
       points.map((p) => [[p.x, p.y].join(","), nodeRadius() + 2]),
     );
-    routeRadii.set("680,486", 54 * scale);
+    routeRadii.set(rootKey, 54 * scale);
     ctx.save();
     ctx.beginPath();
     ctx.rect(0, 0, w, h);
@@ -542,7 +540,9 @@ import { createCorePainter } from "./core.js";
       line(
         e[0],
         e[1],
-        activeRoutes.has(e[1].join(",")) ? colors[family] + "65" : "#88839840",
+        activeRoutes.has(e[0].join(",")) && activeRoutes.has(e[1].join(","))
+          ? colors[family] + "65"
+          : "#88839840",
         1,
         routeRadii.get(e[0].join(",")) || 0,
         routeRadii.get(e[1].join(",")) || 0,
@@ -1024,7 +1024,11 @@ import { createCorePainter } from "./core.js";
     overviewNodes = [];
     overviewFamilies.forEach((g) => {
       if (circular) {
-        const tree = radialSkillTree(g.f.skills, g, DATA.families.length);
+        const n = DATA.families.length,
+          tree = radialSkillTree(g.f.skills, g, n, [
+            DATA.families[(g.i + n - 1) % n].skills.length,
+            DATA.families[(g.i + 1) % n].skills.length,
+          ]);
         g.treeEdges = tree.edges;
         tree.points.forEach((p) => {
           p.family = g.i;
@@ -1272,14 +1276,16 @@ import { createCorePainter } from "./core.js";
       ctx.stroke();
       ctx.setLineDash([]);
       if (g.treeEdges)
-        g.treeEdges.forEach(({ a, b, p, fromHub }) => {
+        g.treeEdges.forEach(({ a, b, p, q, fromHub }) => {
           const on = models[preset].has(p.s.id),
+            lit = on && (fromHub || models[preset].has(q.s.id)),
             r = Math.max(2, 4.5 * overviewZoom);
-          strokeBranch(
+          strokeFan(
             ctx,
+            [OX(g.x), OY(g.y)],
             [OX(a[0]), OY(a[1])],
             [OX(b[0]), OY(b[1])],
-            on ? g.color + "95" : "#c5bec460",
+            lit ? g.color + "95" : "#c5bec460",
             1,
             fromHub ? radius + 2 : r + 1,
             r + 1,
@@ -1299,12 +1305,13 @@ import { createCorePainter } from "./core.js";
             py = OY(p.y);
           const on = models[preset].has(p.s.id),
             r = overviewNodeRadius();
-          const fromHub = a.x === g.x && a.y === g.y;
+          const fromHub = a.x === g.x && a.y === g.y,
+            lit = on && (fromHub || models[preset].has(a.s.id));
           strokeBranch(
             ctx,
             [ax, ay],
             [px, py],
-            on ? g.color + "85" : "#c5bec43d",
+            lit ? g.color + "85" : "#c5bec43d",
             1,
             fromHub ? radius + 2 : r + 2,
             r + 2,
