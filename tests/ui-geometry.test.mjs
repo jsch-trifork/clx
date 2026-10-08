@@ -43,9 +43,11 @@ test("family view branches keep their row order between columns and never stack"
       for (let i = 1; i < list.length; i++)
         assert(list[i][1] >= list[i - 1][1], "edges between columns cross");
     }
-    const columns = Map.groupBy(points, (p) => p.x);
+    const columns = new Map();
+    for (const p of points)
+      columns.set(p.x, [...(columns.get(p.x) || []), p.y]);
     for (const column of columns.values()) {
-      const ys = column.map((p) => p.y).sort((a, b) => a - b);
+      const ys = column.sort((a, b) => a - b);
       for (let i = 1; i < ys.length; i++) assert(ys[i] - ys[i - 1] >= 51.9);
     }
     for (const [a, b] of edges)
