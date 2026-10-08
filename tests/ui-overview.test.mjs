@@ -138,3 +138,26 @@ test("overview fans never cross, stay apart from their neighbours and start near
         "nodes stack",
       );
 });
+test("every family gets its own icon, preferring one that fits its name", async () => {
+  const { familyIcons } = await import("../web/overview.js");
+  const names = [
+    "21st",
+    "am",
+    "design",
+    "devflow",
+    "explain",
+    "ops",
+    "personal",
+    "superpowers",
+    "ui-ux-pro-max",
+    "ui",
+  ];
+  const icons = familyIcons(names);
+  assert.equal(new Set(icons).size, names.length);
+  assert.equal(icons[names.indexOf("design")], "palette");
+  assert.equal(icons[names.indexOf("ops")], "activity");
+  const unnamed = familyIcons(
+    Array.from({ length: 20 }, (_, i) => "pack-" + i),
+  );
+  assert.equal(new Set(unnamed).size, 20);
+});
