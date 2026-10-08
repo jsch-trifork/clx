@@ -30,27 +30,46 @@ test("small families occupy a compact tree instead of the full 35-skill canvas",
   assert(extent(7) < extent(14));
   assert(extent(14) < extent(35));
 });
-test("family view branches keep their row order between columns and never stack", () => {
+test("family view fans never cross, stay on screen and start near the hub", async () => {
+  const { fanPoint } = await import("../web/curve.js");
+  const named = (n) =>
+    Array.from({ length: n }, (_, i) => ({
+      id: "f/" + i,
+      key: "refinement-skill-" + i,
+    }));
   for (const count of [1, 4, 7, 8, 13, 15, 35]) {
-    const { points, edges } = buildSkillTree(make(count));
-    const pairs = new Map();
-    for (const [a, b] of edges) {
-      const key = a[0] + ">" + b[0];
-      pairs.set(key, [...(pairs.get(key) || []), [a[1], b[1]]]);
-    }
-    for (const list of pairs.values()) {
-      list.sort((p, q) => p[0] - q[0] || p[1] - q[1]);
-      for (let i = 1; i < list.length; i++)
-        assert(list[i][1] >= list[i - 1][1], "edges between columns cross");
-    }
-    const columns = new Map();
+    const { points, edges } = buildSkillTree(named(count));
     for (const p of points)
-      columns.set(p.x, [...(columns.get(p.x) || []), p.y]);
-    for (const column of columns.values()) {
-      const ys = column.sort((a, b) => a - b);
-      for (let i = 1; i < ys.length; i++) assert(ys[i] - ys[i - 1] >= 51.9);
-    }
+      assert(
+        Math.abs(p.y - 486) <= 300.01,
+        "fan stays within the height budget",
+      );
     for (const [a, b] of edges)
-      if (a.join(",") === "680,486") assert(b[0] - a[0] <= 170);
+      if (a.join(",") === "680,486")
+        assert(Math.hypot(b[0] - a[0], b[1] - a[1]) <= 240, "short trunk");
+    const paths = edges.map(([a, b]) =>
+      Array.from({ length: 41 }, (_, k) => fanPoint([680, 486], a, b, k / 40)),
+    );
+    const cross = (p, q, r, s) => {
+      const d = (a, b, c) =>
+        (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+      return d(p, q, r) * d(p, q, s) < 0 && d(r, s, p) * d(r, s, q) < 0;
+    };
+    const same = (u, v) => u[0] === v[0] && u[1] === v[1];
+    for (let i = 0; i < edges.length; i++)
+      for (let j = i + 1; j < edges.length; j++) {
+        if (edges[i].some((u) => edges[j].some((v) => same(u, v)))) continue;
+        for (let k = 1; k < 41; k++)
+          for (let l = 1; l < 41; l++)
+            assert(
+              !cross(
+                paths[i][k - 1],
+                paths[i][k],
+                paths[j][l - 1],
+                paths[j][l],
+              ),
+              "branches cross",
+            );
+      }
   }
 });
