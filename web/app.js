@@ -6,7 +6,7 @@ import {
 } from "./overview.js";
 import { buildSkillTree, ROOT } from "./geometry.js";
 import { strokeBranch, strokeFan } from "./curve.js";
-import { createCorePainter } from "./core.js";
+import { createOrrery } from "./core.js";
 (() => {
   let DATA = {
       families: [],
@@ -32,8 +32,7 @@ import { createCorePainter } from "./core.js";
     panel = root.querySelector(".inspector"),
     menu = root.querySelector(".menu"),
     notice = root.querySelector(".notice");
-  const motionCanvas = root.querySelector(".core-motion");
-  const corePainter = createCorePainter(motionCanvas);
+  const orrery = createOrrery(root.querySelector(".orrery"));
   const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
   let baseEdges = [],
     familyRings = [];
@@ -41,8 +40,8 @@ import { createCorePainter } from "./core.js";
   let profileChosen = false;
   let editMode = false,
     labelsRight = 0,
-    motionFrame = 0,
-    lastMotion = 0;
+    settleTimer = 0,
+    lastInput = performance.now();
   const nodeRadius = () => 9;
   const overviewNodeRadius = () => (w < 600 ? 5 : 6);
   let colors = [];
@@ -276,39 +275,39 @@ import { createCorePainter } from "./core.js";
       320,
     );
   }
-  let corePose = null;
-  function paintCore(now = performance.now()) {
+  function paintCore() {
     if (!w || !draft) return;
-    const target = {
+    orrery.place({
       x: overview ? OX(overviewCenter[0]) : X(414),
       y: overview ? OY(overviewCenter[1]) : Y(515),
       scale: overview ? (Math.max(0.8, w / 1586) * 110) / 133 : scale,
-    };
-    if (!corePose || reducedMotion.matches) corePose = { ...target, now };
-    const blend =
-      1 - Math.exp(-Math.min(100, Math.max(0, now - corePose.now)) / 90);
-    for (const key of ["x", "y", "scale"])
-      corePose[key] += (target[key] - corePose[key]) * blend;
-    corePose.now = now;
-    corePainter.paint({
-      ...corePose,
-      time: reducedMotion.matches ? 0 : now / 1000,
+      width: w,
+      height: h,
     });
+    orrery.update(
+      DATA.families.map((f, i) => ({
+        color: colors[i],
+        total: f.skills.length,
+        on: f.skills.filter(isOn).length,
+      })),
+      overview ? -1 : family,
+    );
   }
 
-  function startMotion() {
-    cancelAnimationFrame(motionFrame);
-    motionFrame = 0;
-    paintCore();
-    if (reducedMotion.matches || document.hidden) return;
-    const tick = (now) => {
-      if (now - lastMotion > 33) {
-        paintCore(now);
-        lastMotion = now;
-      }
-      motionFrame = requestAnimationFrame(tick);
-    };
-    motionFrame = requestAnimationFrame(tick);
+  // The orbits turn while someone is using CLX and pause when the window
+  // loses focus or sits untouched, so a UI left open beside a terminal costs
+  // nothing. Any input starts them again.
+  const settleAfter = 30000;
+  function settleCore() {
+    clearTimeout(settleTimer);
+    const idle = performance.now() - lastInput,
+      awake = !document.hidden && document.hasFocus() && idle < settleAfter;
+    root.classList.toggle("core-settled", !awake);
+    settleTimer = awake ? setTimeout(settleCore, settleAfter - idle) : 0;
+  }
+  function wakeCore() {
+    lastInput = performance.now();
+    if (!settleTimer) settleCore();
   }
 
   function build() {
@@ -671,7 +670,6 @@ import { createCorePainter } from "./core.js";
     canvas.width = w * devicePixelRatio;
     canvas.height = h * devicePixelRatio;
     ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
-    corePainter.resize(w, h, devicePixelRatio);
     layoutLabels();
     if (!(circular && overview)) pan = Math.min(pan, maxPan());
     draw();
@@ -817,10 +815,20 @@ import { createCorePainter } from "./core.js";
       }
     });
   }
-  function openMenu(html) {
+  // A dialog asks something that needs an answer before you can go on, so it
+  // sits centered over a dimmed page instead of hanging off the toolbar.
+  function openMenu(html, dialog = false) {
     close();
     menu.innerHTML =
       '<button class="close" aria-label="Close menu">×</button>' + html;
+    menu.classList.toggle("dialog", dialog);
+    if (dialog) {
+      menu.setAttribute("role", "alertdialog");
+      menu.setAttribute("aria-modal", "true");
+      menu.setAttribute("aria-labelledby", "clx-dialog-title");
+    } else
+      for (const name of ["role", "aria-modal", "aria-labelledby"])
+        menu.removeAttribute(name);
     menu.hidden = false;
     animateElement(menu, [
       { opacity: 0, transform: "translateY(-7px)" },
@@ -1574,10 +1582,12 @@ import { createCorePainter } from "./core.js";
       return;
     }
     openMenu(
-      '<div class="eyebrow">Unsaved changes</div><h3>Keep your changes?</h3><p>Save “' +
+      '<div class="eyebrow">Unsaved changes</div><h3 id="clx-dialog-title">Keep your changes?</h3><p>Save “' +
         esc(draft.name) +
         '” before switching, or discard your edits.</p><div class="row"><button class="control primary" data-save-first>Save & continue</button><button class="control" data-discard>Discard</button><button class="plain" data-stay>Keep editing</button></div>',
+      true,
     );
+    menu.querySelector("[data-save-first]").focus();
     menu.querySelector("[data-save-first]").onclick = async () => {
       if (await savePreset()) continuation();
     };
@@ -2161,9 +2171,17 @@ import { createCorePainter } from "./core.js";
   reducedMotion.addEventListener("change", () => {
     if (reducedMotion.matches)
       root.getAnimations({ subtree: true }).forEach((a) => a.cancel());
-    startMotion();
   });
-  document.addEventListener("visibilitychange", startMotion);
+  document.addEventListener("visibilitychange", settleCore);
+  addEventListener("blur", settleCore);
+  for (const type of [
+    "pointermove",
+    "pointerdown",
+    "keydown",
+    "wheel",
+    "focus",
+  ])
+    addEventListener(type, wakeCore, { passive: true });
   document.fonts.ready.then(() => {
     layoutLabels();
     draw();
@@ -2195,7 +2213,7 @@ import { createCorePainter } from "./core.js";
   }
   // Catalog responses can arrive before ResizeObserver fires on a fast load.
   resize();
-  startMotion();
+  settleCore();
   load();
   checkVersion();
 })();

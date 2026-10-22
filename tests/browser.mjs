@@ -96,6 +96,31 @@ try {
     await page.goto(url);
     await page.locator(".overview-family").first().waitFor();
     assert.equal(await page.locator(".overview-node").count(), 92);
+    // One orbit per family; only Workflow, which Existing selects, has a planet.
+    assert.equal(await page.locator(".orrery-ring").count(), 6);
+    assert.equal(await page.locator(".orrery-planet:not(.empty)").count(), 1);
+    // The orbits pause when the window loses focus and resume on focus. At
+    // phone width the overview opens left of the center, so they wait off
+    // screen.
+    const turning = width < 600 ? "paused" : "running";
+    const orbits = () =>
+      page.evaluate(() =>
+        document
+          .getAnimations()
+          .filter((a) => a.animationName === "clx-orbit")
+          .map((a) => a.playState),
+      );
+    assert.deepEqual(await orbits(), Array(6).fill(turning));
+    await page.evaluate(() => {
+      document.hasFocus = () => false;
+      dispatchEvent(new Event("blur"));
+    });
+    assert.deepEqual(await orbits(), Array(6).fill("paused"));
+    await page.evaluate(() => {
+      delete document.hasFocus;
+      dispatchEvent(new Event("focus"));
+    });
+    assert.deepEqual(await orbits(), Array(6).fill(turning));
     const updateNotice = page.locator(".update-status");
     await updateNotice.waitFor();
     await updateNotice.locator("summary").click();
@@ -209,6 +234,13 @@ try {
     await page.locator("[data-mode-edit]").click();
     await page.locator("[data-main]").click();
     assert.equal(await page.locator('.node[aria-pressed="true"]').count(), 35);
+    // The whole-family fill is drawn on the round hub, not the narrow glyph.
+    const hubFill = await page.locator("[data-main]").evaluate((e) => {
+      const fill = getComputedStyle(e, "::before");
+      return { content: fill.content, width: fill.width, height: fill.height };
+    });
+    assert.notEqual(hubFill.content, "none");
+    assert.equal(hubFill.width, hubFill.height);
     assert.equal(
       await page.locator("[data-main]").getAttribute("aria-pressed"),
       "true",
@@ -217,6 +249,32 @@ try {
     assert.equal(await page.locator('.node[aria-pressed="true"]').count(), 0);
     await page.locator("[data-main]").click();
     await page.locator("[data-mode-view]").click();
+    // Unsaved changes are asked about in a centered dialog over a dimmed page.
+    const unsaved = page.getByRole("alertdialog", {
+      name: "Keep your changes?",
+    });
+    await unsaved.evaluate(async (el) => {
+      await Promise.all(
+        el.getAnimations().map((a) => a.finished.catch(() => {})),
+      );
+    });
+    const unsavedBounds = await unsaved.boundingBox();
+    assert(Math.abs(unsavedBounds.x + unsavedBounds.width / 2 - width / 2) < 2);
+    assert(Math.abs(unsavedBounds.y + unsavedBounds.height / 2 - 430) < 2);
+    assert(
+      unsavedBounds.x >= 15 &&
+        unsavedBounds.x + unsavedBounds.width <= width - 15,
+    );
+    assert.equal(
+      await page.evaluate(() =>
+        document.activeElement.hasAttribute("data-save-first"),
+      ),
+      true,
+    );
+    assert.equal(
+      await page.evaluate(() => document.elementFromPoint(8, 852).id),
+      "clx-atlas",
+    );
     await page
       .getByRole("button", { name: "Save & continue", exact: true })
       .click();
@@ -399,6 +457,17 @@ try {
     await page.locator(".overview-family").first().waitFor();
     const hubs = page.locator(".overview-family");
     assert.equal(await hubs.count(), 18);
+    // Reduced motion draws every orbit at rest instead of turning it.
+    assert.equal(await page.locator(".orrery-ring").count(), 18);
+    assert.equal(
+      await page.evaluate(
+        () =>
+          document
+            .getAnimations()
+            .filter((a) => a.animationName === "clx-orbit").length,
+      ),
+      0,
+    );
     for (const face of ["top", "bottom", "left", "right"])
       assert(
         (await page.locator(`.overview-family[data-face="${face}"]`).count()) >
