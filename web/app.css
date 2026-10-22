@@ -769,9 +769,87 @@ button:disabled {
 #clx-atlas .chrome[hidden] {
   display: none;
 }
-#clx-atlas .core-motion {
+#clx-atlas .orrery {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 240px;
+  height: 240px;
+  margin: -120px;
   pointer-events: none;
   z-index: 1;
+}
+#clx-atlas .orrery.placed {
+  transition: transform 360ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+#clx-atlas .orrery-sun {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 64px;
+  height: 64px;
+  margin: -32px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    #fff4dc 0 8%,
+    #f0c17e70 17%,
+    #b39be524 42%,
+    #b39be500 70%
+  );
+}
+#clx-atlas .orrery-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--r) * 2px);
+  height: calc(var(--r) * 2px);
+  margin: calc(var(--r) * -1px);
+  box-sizing: border-box;
+  border: 1px solid var(--ring);
+  border-radius: 50%;
+  animation: clx-orbit var(--t) linear var(--delay) infinite;
+  transition: opacity 260ms ease;
+}
+#clx-atlas .orrery.focused .orrery-ring:not(.current) {
+  opacity: 0.4;
+}
+#clx-atlas .orrery-planet {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: calc(var(--size) * 1px);
+  height: calc(var(--size) * 1px);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--c);
+  box-shadow: 0 0 calc(var(--size) * 1.4px) var(--ring);
+  transition:
+    width 420ms cubic-bezier(0.16, 1, 0.3, 1),
+    height 420ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+#clx-atlas .orrery-planet.empty {
+  background: #19192c;
+  box-shadow: inset 0 0 0 1px var(--c);
+  opacity: 0.7;
+}
+#clx-atlas.core-settled .orrery-ring,
+#clx-atlas .orrery.offstage .orrery-ring {
+  animation-play-state: paused;
+}
+@keyframes clx-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #clx-atlas .orrery-ring {
+    animation: none;
+    transform: rotate(var(--rest));
+  }
+  #clx-atlas .orrery.placed {
+    transition: none;
+  }
 }
 #clx-atlas .nodes {
   z-index: 2;

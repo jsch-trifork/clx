@@ -96,6 +96,31 @@ try {
     await page.goto(url);
     await page.locator(".overview-family").first().waitFor();
     assert.equal(await page.locator(".overview-node").count(), 92);
+    // One orbit per family; only Workflow, which Existing selects, has a planet.
+    assert.equal(await page.locator(".orrery-ring").count(), 6);
+    assert.equal(await page.locator(".orrery-planet:not(.empty)").count(), 1);
+    // The orbits pause when the window loses focus and resume on focus. At
+    // phone width the overview opens left of the center, so they wait off
+    // screen.
+    const turning = width < 600 ? "paused" : "running";
+    const orbits = () =>
+      page.evaluate(() =>
+        document
+          .getAnimations()
+          .filter((a) => a.animationName === "clx-orbit")
+          .map((a) => a.playState),
+      );
+    assert.deepEqual(await orbits(), Array(6).fill(turning));
+    await page.evaluate(() => {
+      document.hasFocus = () => false;
+      dispatchEvent(new Event("blur"));
+    });
+    assert.deepEqual(await orbits(), Array(6).fill("paused"));
+    await page.evaluate(() => {
+      delete document.hasFocus;
+      dispatchEvent(new Event("focus"));
+    });
+    assert.deepEqual(await orbits(), Array(6).fill(turning));
     const updateNotice = page.locator(".update-status");
     await updateNotice.waitFor();
     await updateNotice.locator("summary").click();
@@ -399,6 +424,17 @@ try {
     await page.locator(".overview-family").first().waitFor();
     const hubs = page.locator(".overview-family");
     assert.equal(await hubs.count(), 18);
+    // Reduced motion draws every orbit at rest instead of turning it.
+    assert.equal(await page.locator(".orrery-ring").count(), 18);
+    assert.equal(
+      await page.evaluate(
+        () =>
+          document
+            .getAnimations()
+            .filter((a) => a.animationName === "clx-orbit").length,
+      ),
+      0,
+    );
     for (const face of ["top", "bottom", "left", "right"])
       assert(
         (await page.locator(`.overview-family[data-face="${face}"]`).count()) >
