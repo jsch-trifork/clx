@@ -327,6 +327,20 @@
   top: 65px;
   width: 285px;
 }
+#clx-atlas .menu.dialog {
+  inset: 0;
+  margin: auto;
+  width: 380px;
+  height: fit-content;
+}
+/* Dims the page behind a dialog and keeps clicks off it until it's answered. */
+#clx-atlas:has(> .menu.dialog:not([hidden]))::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  background: #0b0b1899;
+}
 #clx-atlas .menu button.item {
   display: flex;
   justify-content: space-between;

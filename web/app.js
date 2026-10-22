@@ -815,10 +815,20 @@ import { createOrrery } from "./core.js";
       }
     });
   }
-  function openMenu(html) {
+  // A dialog asks something that needs an answer before you can go on, so it
+  // sits centered over a dimmed page instead of hanging off the toolbar.
+  function openMenu(html, dialog = false) {
     close();
     menu.innerHTML =
       '<button class="close" aria-label="Close menu">×</button>' + html;
+    menu.classList.toggle("dialog", dialog);
+    if (dialog) {
+      menu.setAttribute("role", "alertdialog");
+      menu.setAttribute("aria-modal", "true");
+      menu.setAttribute("aria-labelledby", "clx-dialog-title");
+    } else
+      for (const name of ["role", "aria-modal", "aria-labelledby"])
+        menu.removeAttribute(name);
     menu.hidden = false;
     animateElement(menu, [
       { opacity: 0, transform: "translateY(-7px)" },
@@ -1572,10 +1582,12 @@ import { createOrrery } from "./core.js";
       return;
     }
     openMenu(
-      '<div class="eyebrow">Unsaved changes</div><h3>Keep your changes?</h3><p>Save “' +
+      '<div class="eyebrow">Unsaved changes</div><h3 id="clx-dialog-title">Keep your changes?</h3><p>Save “' +
         esc(draft.name) +
         '” before switching, or discard your edits.</p><div class="row"><button class="control primary" data-save-first>Save & continue</button><button class="control" data-discard>Discard</button><button class="plain" data-stay>Keep editing</button></div>',
+      true,
     );
+    menu.querySelector("[data-save-first]").focus();
     menu.querySelector("[data-save-first]").onclick = async () => {
       if (await savePreset()) continuation();
     };

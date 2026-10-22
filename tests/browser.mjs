@@ -249,6 +249,32 @@ try {
     assert.equal(await page.locator('.node[aria-pressed="true"]').count(), 0);
     await page.locator("[data-main]").click();
     await page.locator("[data-mode-view]").click();
+    // Unsaved changes are asked about in a centered dialog over a dimmed page.
+    const unsaved = page.getByRole("alertdialog", {
+      name: "Keep your changes?",
+    });
+    await unsaved.evaluate(async (el) => {
+      await Promise.all(
+        el.getAnimations().map((a) => a.finished.catch(() => {})),
+      );
+    });
+    const unsavedBounds = await unsaved.boundingBox();
+    assert(Math.abs(unsavedBounds.x + unsavedBounds.width / 2 - width / 2) < 2);
+    assert(Math.abs(unsavedBounds.y + unsavedBounds.height / 2 - 430) < 2);
+    assert(
+      unsavedBounds.x >= 15 &&
+        unsavedBounds.x + unsavedBounds.width <= width - 15,
+    );
+    assert.equal(
+      await page.evaluate(() =>
+        document.activeElement.hasAttribute("data-save-first"),
+      ),
+      true,
+    );
+    assert.equal(
+      await page.evaluate(() => document.elementFromPoint(8, 852).id),
+      "clx-atlas",
+    );
     await page
       .getByRole("button", { name: "Save & continue", exact: true })
       .click();
