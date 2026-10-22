@@ -234,6 +234,13 @@ try {
     await page.locator("[data-mode-edit]").click();
     await page.locator("[data-main]").click();
     assert.equal(await page.locator('.node[aria-pressed="true"]').count(), 35);
+    // The whole-family fill is drawn on the round hub, not the narrow glyph.
+    const hubFill = await page.locator("[data-main]").evaluate((e) => {
+      const fill = getComputedStyle(e, "::before");
+      return { content: fill.content, width: fill.width, height: fill.height };
+    });
+    assert.notEqual(hubFill.content, "none");
+    assert.equal(hubFill.width, hubFill.height);
     assert.equal(
       await page.locator("[data-main]").getAttribute("aria-pressed"),
       "true",
