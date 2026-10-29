@@ -2,7 +2,14 @@
 //   docker-run.mjs <workspaces.json> <name> [read-only paths...] -- <claude args...>
 // Read-only paths are clx's generated files (settings, MCP config, prompt, plugins).
 import { spawn, execFile } from "node:child_process";
-import { access, mkdtemp, readFile, rm, writeFile, readdir } from "node:fs/promises";
+import {
+  access,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+  readdir,
+} from "node:fs/promises";
 import { homedir, tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -116,7 +123,10 @@ async function token() {
 
 function hiddenInput() {
   return new Promise((done) => {
-    const rl = createInterface({ input: process.stdin, output: process.stderr });
+    const rl = createInterface({
+      input: process.stdin,
+      output: process.stderr,
+    });
     rl._writeToOutput = () => {};
     rl.question("", (answer) => {
       rl.close();
@@ -150,7 +160,14 @@ async function prepareHome(volume, image, home, user) {
 
 // Folders that make the Mac run code when they appear (a new repo's hooks, editor
 // tasks, Claude settings), found before and after the session.
-const WATCH = new Set([".git", ".claude", ".vscode", ".envrc", ".mcp.json", ".husky"]);
+const WATCH = new Set([
+  ".git",
+  ".claude",
+  ".vscode",
+  ".envrc",
+  ".mcp.json",
+  ".husky",
+]);
 async function watched(roots) {
   const found = new Set();
   const walk = async (dir, depth) => {
@@ -177,7 +194,10 @@ async function watched(roots) {
 }
 
 const sep = process.argv.indexOf("--");
-const [file, name, ...readOnlyArgs] = process.argv.slice(2, sep < 0 ? undefined : sep);
+const [file, name, ...readOnlyArgs] = process.argv.slice(
+  2,
+  sep < 0 ? undefined : sep,
+);
 const claudeArgs = sep < 0 ? [] : process.argv.slice(sep + 1);
 
 const id = `clx-${name.replace(/[^a-zA-Z0-9_.-]/g, "-")}-${process.pid}`;
@@ -202,7 +222,9 @@ for (const signal of ["SIGHUP", "SIGTERM"])
 
 try {
   if (!(await quiet("info", "--format", "{{.ServerVersion}}")))
-    throw new Error("Docker isn't running. Start Docker Desktop and try again.");
+    throw new Error(
+      "Docker isn't running. Start Docker Desktop and try again.",
+    );
   const ws = resolveWorkspace(await readWorkspaces(file), name);
   const home = homedir();
   await fileSharingWarning(home);
@@ -282,8 +304,16 @@ try {
   await docker("network", "connect", "--alias", "clx-egress", network, egress);
 
   const proxy = "http://clx-egress:3128";
-  const gitName = (await exec("git", ["config", "--get", "user.name"]).catch(() => ({ stdout: "" }))).stdout.trim();
-  const gitEmail = (await exec("git", ["config", "--get", "user.email"]).catch(() => ({ stdout: "" }))).stdout.trim();
+  const gitName = (
+    await exec("git", ["config", "--get", "user.name"]).catch(() => ({
+      stdout: "",
+    }))
+  ).stdout.trim();
+  const gitEmail = (
+    await exec("git", ["config", "--get", "user.email"]).catch(() => ({
+      stdout: "",
+    }))
+  ).stdout.trim();
   const env = {
     HOME: home,
     USER: userInfo().username,
@@ -295,7 +325,10 @@ try {
     http_proxy: proxy,
     ...(process.env.CLAUDE_CONFIG_DIR && { CLAUDE_CONFIG_DIR: claudeDir }),
     ...(gitName && { GIT_AUTHOR_NAME: gitName, GIT_COMMITTER_NAME: gitName }),
-    ...(gitEmail && { GIT_AUTHOR_EMAIL: gitEmail, GIT_COMMITTER_EMAIL: gitEmail }),
+    ...(gitEmail && {
+      GIT_AUTHOR_EMAIL: gitEmail,
+      GIT_COMMITTER_EMAIL: gitEmail,
+    }),
     // Passed by name only, so the token isn't in the docker command line.
     ...Object.fromEntries(Object.keys(auth).map((k) => [k, undefined])),
   };
@@ -335,12 +368,16 @@ try {
     say(
       `STOPPED: the session tried to redirect git to another config (${stopped.join(", ")}). It was removed and the session ended.`,
     );
-  const blocked = (await exec("docker", ["logs", egress]).catch((e) => e))
-    .stderr?.split("\n")
+  const blocked = (
+    await exec("docker", ["logs", egress]).catch((e) => e)
+  ).stderr
+    ?.split("\n")
     .filter((l) => l.startsWith("clx-egress: blocked"));
   if (blocked?.length) {
     const hosts = [...new Set(blocked.map((l) => l.split(" ")[2]))];
-    say(`the network blocked: ${hosts.join(", ")} (add a domain under "network" if it's needed)`);
+    say(
+      `the network blocked: ${hosts.join(", ")} (add a domain under "network" if it's needed)`,
+    );
   }
   await cleanup();
   const after = await watched(folders);

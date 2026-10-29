@@ -87,8 +87,7 @@ function firstRecord(sock, head) {
       done(value);
     };
     const check = () => {
-      if (buf.length >= 5 && buf.length >= 5 + buf.readUInt16BE(3))
-        finish(buf);
+      if (buf.length >= 5 && buf.length >= 5 + buf.readUInt16BE(3)) finish(buf);
       else if (buf.length > 65_536) finish(null);
     };
     const onData = (chunk) => {

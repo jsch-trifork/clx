@@ -81,7 +81,8 @@ export async function planMounts(folders) {
         entries = await readdir(parent, { withFileTypes: true });
       } catch {}
       for (const entry of entries)
-        if (entry.isDirectory()) await gitDir(join(parent, entry.name), depth + 1);
+        if (entry.isDirectory())
+          await gitDir(join(parent, entry.name), depth + 1);
     }
   };
 
@@ -91,25 +92,36 @@ export async function planMounts(folders) {
     for (const name of FOLDER_FILES) await protect(join(folder, name), "file");
     const top = await git(folder, "rev-parse", "--show-toplevel");
     if (!top) continue;
-    let common = resolve(folder, await git(folder, "rev-parse", "--git-common-dir"));
+    let common = resolve(
+      folder,
+      await git(folder, "rev-parse", "--git-common-dir"),
+    );
     common = await realpath(common).catch(() => common);
     // A clone's .git folder is the git folder itself, not a file to stand in for.
-    if ((await kind(join(folder, ".git"))) === "dir") mounts.delete(join(folder, ".git"));
+    if ((await kind(join(folder, ".git"))) === "dir")
+      mounts.delete(join(folder, ".git"));
     await gitDir(common, 0);
     // A hooks folder set in the config (husky and friends) runs on every commit.
     const hooksPath = await git(folder, "config", "--get", "core.hooksPath");
     if (hooksPath) {
       const abs = isAbsolute(hooksPath) ? hooksPath : resolve(top, hooksPath);
-      if ([...folders, common].some((f) => within(abs, f))) await protect(abs, "dir");
+      if ([...folders, common].some((f) => within(abs, f)))
+        await protect(abs, "dir");
     }
   }
   // Anything between a mount and a protected path is pinned too.
   const roots = [...mounts].filter(([, m]) => m === "rw").map(([p]) => p);
   for (const [path, mode] of [...mounts]) {
     if (mode === "rw") continue;
-    const root = roots.filter((r) => r !== path && within(path, r)).sort((a, b) => b.length - a.length)[0];
+    const root = roots
+      .filter((r) => r !== path && within(path, r))
+      .sort((a, b) => b.length - a.length)[0];
     if (!root) continue;
-    for (let dir = dirname(path); dir !== root && within(dir, root); dir = dirname(dir))
+    for (
+      let dir = dirname(path);
+      dir !== root && within(dir, root);
+      dir = dirname(dir)
+    )
       add(dir, "rw");
   }
   const depth = (p) => p.split(sep).length;
@@ -207,8 +219,7 @@ export function claudeRunArgs({
         "--mount",
         `type=tmpfs,dst=${path},tmpfs-mode=0555,tmpfs-size=1k`,
       );
-    else
-      args.push("--mount", `type=bind,src=${standIn},dst=${path},readonly`);
+    else args.push("--mount", `type=bind,src=${standIn},dst=${path},readonly`);
   }
   for (const path of readOnly) bind(path, true);
   for (const [key, value] of Object.entries(env))
