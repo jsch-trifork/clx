@@ -17,9 +17,10 @@ import {
   claudeRunArgs,
   rebaseState,
   sweepRebaseState,
+  gitWatch,
 } from "../src/docker.mjs";
 import { checkEntry, resolveWorkspace } from "../src/workspaces.mjs";
-import { symlink, rename } from "node:fs/promises";
+import { symlink, rename, readFile } from "node:fs/promises";
 
 const exec = promisify(execFile);
 
@@ -464,13 +465,83 @@ test("sweepRebaseState removes state that appeared, keeps what was there before"
   );
 
   const removed = await sweepRebaseState(gitDirs, before);
-  assert.deepEqual(
-    removed,
-    [join(app, ".git/rebase-merge")],
-    "only the new state",
-  );
+  assert.equal(removed.length, 1, "only the new state");
+  assert.equal(removed[0].path, join(app, ".git/rebase-merge"));
   // The pre-existing rebase-apply is untouched; the planted rebase-merge is gone.
   const after = await rebaseState(gitDirs);
   assert.ok(after.has(join(app, ".git/rebase-apply")));
   assert.ok(!after.has(join(app, ".git/rebase-merge")));
+});
+
+test("planMounts protects a linked worktree's admin folder (the motivating case)", async (t) => {
+  const { root, g } = await repoFixture(t);
+  const main = join(root, "main");
+  const wt = join(root, "wt");
+  await g(root, "init", "-q", "main");
+  await writeFile(join(main, "f"), "x");
+  await g(main, "add", "-A");
+  await g(main, "commit", "-qm", "i");
+  await g(main, "worktree", "add", "-q", wt, "-b", "feature");
+
+  // The workspace opens the linked worktree only.
+  const plan = await planMounts([wt]);
+  const admin = join(main, ".git/worktrees/wt");
+  // The worktree's gitlink file and the admin folder's commondir/gitdir are read-only,
+  // so the session can't repoint the worktree; the common repo's hooks and config are
+  // read-only too. (The admin folder has no hooks of its own; they live in the common
+  // .git/hooks, which is protected below.)
+  assert.equal(mode(plan, join(wt, ".git")), "ro");
+  assert.equal(mode(plan, join(admin, "commondir")), "ro");
+  assert.equal(mode(plan, join(admin, "gitdir")), "ro");
+  assert.equal(mode(plan, join(main, ".git/hooks")), "ro");
+  assert.equal(mode(plan, join(main, ".git/config")), "ro");
+  // The shared common git dir is mounted so git still works, and both git dirs are
+  // watched for a commondir redirect.
+  assert.ok(plan.gitDirs.includes(join(main, ".git")));
+  assert.ok(plan.gitDirs.includes(admin));
+});
+
+test("gitWatch.check removes a commondir that appears where there was none", async (t) => {
+  const { root, g } = await repoFixture(t);
+  const app = join(root, "app");
+  await g(root, "init", "-q", "app");
+  await writeFile(join(app, "f"), "x");
+  await g(app, "add", "-A");
+  await g(app, "commit", "-qm", "i");
+  const gitDir = join(app, ".git");
+
+  let notified = null;
+  const watcher = await gitWatch([gitDir], (found) => {
+    notified = found;
+  });
+  t.after(() => watcher.close());
+  // A plain clone's .git has no commondir; the session plants one pointing elsewhere.
+  await writeFile(join(gitDir, "commondir"), "/tmp/attacker\n");
+  const found = await watcher.check();
+  assert.deepEqual(found, [join(gitDir, "commondir")]);
+  // It is removed, so host git can't be redirected to another config/hooks.
+  await assert.rejects(readFile(join(gitDir, "commondir")), /ENOENT/);
+});
+
+test("sweepRebaseState reports the branch to return to", async (t) => {
+  const { root, g } = await repoFixture(t);
+  const app = join(root, "app");
+  await g(root, "init", "-q", "app");
+  await writeFile(join(app, "f"), "x");
+  await g(app, "add", "-A");
+  await g(app, "commit", "-qm", "i");
+  const gitDirs = [join(app, ".git")];
+  const before = await rebaseState(gitDirs);
+  await mkdir(join(app, ".git/rebase-merge"), { recursive: true });
+  await writeFile(
+    join(app, ".git/rebase-merge/head-name"),
+    "refs/heads/main\n",
+  );
+
+  const removed = await sweepRebaseState(gitDirs, before);
+  assert.equal(
+    removed[0].branch,
+    "main",
+    "the branch name is read before deleting",
+  );
 });

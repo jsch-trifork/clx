@@ -24,6 +24,8 @@ import {
   gitWatch,
   rebaseState,
   sweepRebaseState,
+  AUTORUN_NAMES,
+  SKIP_DIRS,
 } from "../src/docker.mjs";
 
 const exec = promisify(execFile);
@@ -160,20 +162,15 @@ async function prepareHome(volume, image, home, user) {
   );
 }
 
-// Folders that make the Mac run code when they appear (a new repo's hooks, editor
-// tasks, Claude settings), found before and after the session.
-const WATCH = new Set([
-  ".git",
-  ".claude",
-  ".vscode",
-  ".envrc",
-  ".mcp.json",
-  ".husky",
-]);
+// Folders and files that make the Mac run code when they appear (a new repo's hooks,
+// editor tasks, Claude settings), found before and after the session. The same names
+// the mount plan protects, scanned to the same depth and skipping the same build-output
+// folders, so the warning matches what is protected.
+const WATCH = new Set(AUTORUN_NAMES);
 async function watched(roots) {
   const found = new Set();
   const walk = async (dir, depth) => {
-    if (depth > 8) return;
+    if (depth > 12) return;
     let entries;
     try {
       entries = await readdir(dir, { withFileTypes: true });
@@ -186,7 +183,7 @@ async function watched(roots) {
         entry.isDirectory() &&
         !entry.isSymbolicLink() &&
         !WATCH.has(entry.name) &&
-        entry.name !== "node_modules"
+        !SKIP_DIRS.has(entry.name)
       )
         await walk(join(dir, entry.name), depth + 1);
     }
@@ -234,10 +231,14 @@ async function finish() {
     );
   if (plan) {
     const rebased = await sweepRebaseState(plan.gitDirs, rebaseBefore);
-    if (rebased.length)
+    for (const { path, branch } of rebased) {
+      const back = branch
+        ? ` Your repo may be on a detached HEAD; get back with: git checkout ${branch}`
+        : " Your repo may be on a detached HEAD; 'git checkout <branch>' returns to your branch.";
       say(
-        `removed an in-progress rebase/cherry-pick the session left in git (do not run 'git rebase --continue'): ${rebased.join(", ")}`,
+        `removed an in-progress rebase/cherry-pick the session left (${path}); do NOT run 'git rebase --continue'.${back} The session's commits are still in the reflog.`,
       );
+    }
   }
   const blocked = (
     await exec("docker", ["logs", egress]).catch((e) => e)

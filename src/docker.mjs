@@ -53,8 +53,28 @@ async function git(dir, ...args) {
 const GIT_CONFIGS = ["config", "config.worktree"];
 const GIT_POINTERS = ["commondir", "gitdir"];
 
-// Folders that aren't walked for nested repos and editor settings.
-const SKIP_DIRS = new Set(["node_modules"]);
+// Folders that aren't walked for nested repos and editor settings: dependency and
+// build-output trees, which are large and don't normally hold a repo or settings the
+// Mac acts on. A repo or auto-run file buried inside one is neither protected nor
+// warned about, the same trade-off node_modules already made. `vendor` is NOT here:
+// submodules and vendored repos live there.
+export const SKIP_DIRS = new Set([
+  "node_modules",
+  ".venv",
+  "venv",
+  "target",
+  "dist",
+  "build",
+  ".next",
+  ".nuxt",
+  ".gradle",
+  "Pods",
+  "DerivedData",
+  "obj",
+]);
+
+// Names the Mac may act on by itself, for the after-session scan to warn about.
+export const AUTORUN_NAMES = [...FOLDER_DIRS, ...FOLDER_FILES];
 
 // Where a `.git` file points: "gitdir: <path>", relative to the file's folder.
 async function gitFileTarget(file) {
@@ -170,12 +190,24 @@ export async function planMounts(folders) {
       entries = await readdir(dir, { withFileTypes: true });
     } catch {}
     for (const entry of entries) {
-      if (entry.isSymbolicLink() || entry.name === ".git") continue;
+      if (entry.name === ".git") continue;
       const path = join(dir, entry.name);
-      if (
-        FOLDER_DIRS.includes(entry.name) ||
-        FOLDER_FILES.includes(entry.name)
-      ) {
+      const settings =
+        FOLDER_DIRS.includes(entry.name) || FOLDER_FILES.includes(entry.name);
+      if (entry.isSymbolicLink()) {
+        // Never descend through a symlink. A settings folder/file that is a symlink
+        // still points at something the Mac acts on, so protect its target.
+        if (settings) {
+          const target = await realpath(path).catch(() => null);
+          if (target)
+            await protect(
+              target,
+              (await kind(target)) === "dir" ? "dir" : "file",
+            );
+        }
+        continue;
+      }
+      if (settings) {
         add(path, "ro");
         continue;
       }
@@ -383,14 +415,22 @@ export async function rebaseState(gitDirs) {
   return found;
 }
 
-// Remove any rebase/sequencer state in gitDirs that is not in `before`, returning the
-// paths removed so docker-run can warn.
+// Remove any rebase/sequencer state in gitDirs that is not in `before`. Returns one
+// `{ path, branch }` per removal, where `branch` is the branch the rebase was started
+// from (read before deleting), so docker-run can tell you how to get back — removing
+// the state can leave the repo on a detached HEAD.
 export async function sweepRebaseState(gitDirs, before) {
   const removed = [];
   for (const path of await rebaseState(gitDirs))
     if (!before.has(path)) {
+      let branch = null;
+      try {
+        branch = (await readFile(join(path, "head-name"), "utf8"))
+          .trim()
+          .replace(/^refs\/heads\//, "");
+      } catch {}
       await rm(path, { recursive: true, force: true }).catch(() => {});
-      removed.push(path);
+      removed.push({ path, branch });
     }
   return removed;
 }
