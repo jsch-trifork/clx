@@ -416,6 +416,29 @@ export async function workspaceSettings(ws, options = {}) {
   };
 }
 
+// A workspace launch skips Claude Code's own settings files (--setting-sources ""), so
+// a stray folder, domain or excluded command in them can't widen the scope. clx passes
+// them in through --settings instead, minus what would widen it. Your own settings
+// keep everything else; a repo's settings keep only their permission rules, because
+// hooks, env (e.g. ANTHROPIC_BASE_URL), helpers and plugins there are the repo's code
+// running as you, outside the sandbox.
+export function userSettings(settings) {
+  const { sandbox, ...out } = settings ?? {};
+  if (out.permissions) {
+    const { additionalDirectories, ...permissions } = out.permissions;
+    out.permissions = permissions;
+  }
+  return out;
+}
+
+export function projectSettings(settings) {
+  const { allow, ask, deny } = settings?.permissions ?? {};
+  const permissions = Object.fromEntries(
+    Object.entries({ allow, ask, deny }).filter(([, v]) => Array.isArray(v)),
+  );
+  return Object.keys(permissions).length ? { permissions } : {};
+}
+
 // Deep merge where arrays concatenate, so the user's own deny rules survive.
 export function mergeSettings(base, extra) {
   const out = { ...base };

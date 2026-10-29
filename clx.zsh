@@ -814,8 +814,8 @@ clx() {
   fi
   if [[ -n "$workspace" ]]; then
     local -a ws_folders
-    # Chrome is on in workspaces unless this launch passes --no-chrome.
-    [[ -z "$chrome" ]] && chrome=1
+    # Chrome is off in workspaces unless this launch passes --chrome.
+    [[ -z "$chrome" ]] && chrome=0
     ws_folders=("${(@f)$(CLX_WORKSPACE_CHROME=$chrome command node "$_CLX_SOURCE_DIR/scripts/workspace.mjs" apply "$workspaces_file" "$workspace" "$settings_file" "$mcp_file" "$synth_root" "$prompt_file")}") || return 1
     ws_folders=("${(@)ws_folders:#}")
     ws_start="${ws_folders[1]}"
@@ -826,15 +826,18 @@ clx() {
   local -a effort_args prompt_args ws_args
   [[ -n "$effort" ]] && effort_args=(--effort "$effort")
   # Chrome acts as your signed-in browser, outside the sandbox. Without a flag, normal
-  # sessions follow Claude Code's own setting; with --no-chrome a workspace also denies it.
+  # sessions follow Claude Code's own setting; a workspace denies it unless --chrome.
   if [[ "$chrome" == 1 ]]; then
     ws_args=(--chrome)
-    [[ -n "$workspace" ]] && print -ru2 -- "clx: Chrome is on: your signed-in browser can reach sites and repos beyond this workspace. Use --no-chrome to lock it."
+    [[ -n "$workspace" ]] && print -ru2 -- "clx: Chrome is on for this launch: your signed-in browser can reach sites and repos beyond this workspace."
   elif [[ "$chrome" == 0 ]]; then
     ws_args=(--no-chrome)
   fi
   # --add-dir, not only the settings' additionalDirectories: Claude Code loads an added
   # folder's project skills (.claude/skills) only when it comes in through the flag.
+  # Claude Code's own settings files could widen the scope; their safe parts are
+  # already merged into --settings (see userSettings/projectSettings).
+  [[ -n "$workspace" ]] && ws_args+=(--setting-sources "")
   local ws_dir
   for ws_dir in "${(@)ws_folders[2,-1]}"; do ws_args+=(--add-dir "$ws_dir"); done
   if [[ -n "$sys_prompt" ]]; then

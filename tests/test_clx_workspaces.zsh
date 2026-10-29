@@ -27,6 +27,7 @@ print -r -- "\${ENABLE_CLAUDEAI_MCP_SERVERS:-unset}" > "$out/connectors"
 local i=1; while (( i <= \$# )); do
   [[ "\${@[i]}" == --settings ]] && cp "\${@[i+1]}" "$out/s.json"
   [[ "\${@[i]}" == --mcp-config ]] && cp "\${@[i+1]}" "$out/m.json"
+  [[ "\${@[i]}" == --setting-sources ]] && print -r -- "<\${@[i+1]}>" > "$out/sources"
   (( i++ ))
 done
 exit 0
@@ -65,26 +66,28 @@ EOF
     "$(jq -r --arg r "Read(/$work/home/code/other/**)" '.permissions.deny | index($r) != null' "$out/s.json")" "true"
   assert_json_eq "ws_added_dir" "$(jq -c '.permissions.additionalDirectories' "$out/s.json")" "[\"$work/home/code/org/ui\"]"
   assert_eq "ws_add_dir_flag" "$([[ "$(<"$out/argv")" == *"--add-dir $work/home/code/org/ui"* ]] && echo yes)" "yes"
-  # Chrome is on by default in workspaces; the rest stays locked.
-  assert_eq "ws_chrome_default_on" "$([[ "$(<"$out/argv")" == *"--chrome"* && "$(<"$out/argv")" != *"--no-chrome"* ]] && echo yes)" "yes"
-  assert_eq "ws_chrome_default_not_denied" "$(jq '.permissions.deny | index("mcp__claude-in-chrome") == null' "$out/s.json")" "true"
+  # Chrome is off by default in workspaces, and denied.
+  assert_eq "ws_chrome_default_off" "$([[ "$(<"$out/argv")" == *"--no-chrome"* ]] && echo yes)" "yes"
+  assert_eq "ws_chrome_default_denied" "$(jq '.permissions.deny | index("mcp__claude-in-chrome") != null' "$out/s.json")" "true"
+  # Claude Code's own settings files are skipped; clx passes their safe parts in.
+  assert_eq "ws_setting_sources_none" "$(<"$out/sources")" "<>"
   assert_json_eq "ws_mcp_filtered" "$(jq -c '.mcpServers|keys' "$out/m.json")" '["context7"]'
   assert_eq "ws_connectors_off" "$(<"$out/connectors")" "false"
   assert_eq "ws_guard_hook" "$(jq -r '.hooks.PreToolUse[0].matcher' "$out/s.json")" "Agent"
   assert_eq "ws_no_menus_when_direct" "$([[ -f "$out/menus" ]] && echo menus)" ""
 
-  # --- Chrome default on, with a note; --no-chrome locks it for one launch ---
+  # --- Chrome off and quiet by default; --chrome turns it on for one launch, with a note ---
   ( PATH="$stub:$PATH"; clx -w present p1 >/dev/null 2>"$out/chrome_err" )
+  assert_eq "ws_chrome_default_quiet" "$(grep -c 'Chrome is on' "$out/chrome_err")" "0"
+  ( PATH="$stub:$PATH"; clx -w present --chrome p1 >/dev/null 2>"$out/chrome_err" )
+  assert_eq "ws_chrome_exit" "$?" "0"
+  assert_eq "ws_chrome_flag" "$([[ "$(<"$out/argv")" == *"--chrome"* && "$(<"$out/argv")" != *"--no-chrome"* ]] && echo yes)" "yes"
+  assert_eq "ws_chrome_not_denied" "$(jq '.permissions.deny | index("mcp__claude-in-chrome") == null' "$out/s.json")" "true"
   assert_eq "ws_chrome_rest_locked" "$(jq '.permissions.deny | index("RemoteTrigger") != null' "$out/s.json")" "true"
   assert_eq "ws_chrome_sandbox" "$(jq -r '.sandbox.enabled' "$out/s.json")" "true"
   assert_eq "ws_chrome_notes" "$(grep -c 'Chrome is on' "$out/chrome_err")" "1"
-  ( PATH="$stub:$PATH"; clx -w present --no-chrome p1 >/dev/null 2>"$out/chrome_err" )
-  assert_eq "ws_no_chrome_exit" "$?" "0"
-  assert_eq "ws_no_chrome_flag" "$([[ "$(<"$out/argv")" == *"--no-chrome"* ]] && echo yes)" "yes"
-  assert_eq "ws_no_chrome_denied" "$(jq '.permissions.deny | index("mcp__claude-in-chrome") != null' "$out/s.json")" "true"
-  assert_eq "ws_no_chrome_quiet" "$(grep -c 'Chrome is on' "$out/chrome_err")" "0"
   ( PATH="$stub:$PATH"; clx -w present p1 >/dev/null 2>&1 )
-  assert_eq "ws_chrome_back_on_next_launch" "$(jq '.permissions.deny | index("mcp__claude-in-chrome") == null' "$out/s.json")" "true"
+  assert_eq "ws_chrome_back_off_next_launch" "$(jq '.permissions.deny | index("mcp__claude-in-chrome") != null' "$out/s.json")" "true"
 
   # --- Direct without -w: unscoped, no workspace menu ---
   rm -f "$out/s.json"
@@ -95,6 +98,7 @@ EOF
   assert_json_eq "ws_unscoped_mcp_kept" "$(jq -c '.mcpServers|keys' "$out/m.json")" '["context7","playwright"]'
   assert_eq "ws_unscoped_connectors" "$(<"$out/connectors")" "unset"
   assert_eq "ws_unscoped_no_sandbox" "$(jq -r '.sandbox // "none"' "$out/s.json")" "none"
+  assert_eq "ws_unscoped_setting_sources" "$([[ "$(<"$out/argv")" == *"--setting-sources"* ]] && echo yes)" ""
 
   # --- Menus: Workspace menu picks 'present' ---
   print -r -- "present" > "$out/ws_choice"

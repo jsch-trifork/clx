@@ -170,6 +170,7 @@ Launch with `clx -w present Investigate` (or `--workspace present`), or pick the
 - **Network:** shell commands have no network access by default, and GitHub is always blocked. The allowlist is strict, so auto mode can't widen it command by command.
 - **Tools that act outside the sandbox are removed:** claude.ai connectors, cloud routines, messaging other Claude sessions, and WebFetch. A hook refuses cloud (remote) subagents. MCP servers are limited to the workspace's `"mcp"` list.
 - **Its own limits:** Claude can't edit the settings clx generated, Claude or project settings, hooks, `.mcp.json`, git hooks, or programs in `/opt/homebrew` and `/usr/local`.
+- **Other settings can't widen it:** Claude Code doesn't load its own settings files in a workspace. clx passes your settings in itself, without their sandbox block and extra folders. From the start folder's `.claude/settings.json` and `settings.local.json` it keeps only the allow, ask and deny rules. A repo's hooks, env, helpers and plugins don't run, because they'd run as you outside the sandbox.
 
 Workspaces need Claude Code 2.1.281 or newer. Older versions silently ignore some of the sandbox settings, so clx refuses to launch a workspace on them and says why. Launches without `-w` aren't affected.
 
@@ -184,7 +185,7 @@ Options per workspace:
 | `"github": true` | Open GitHub to shell commands (see below) |
 | `"fence": ["/Volumes/code"]` | Extra roots to hide beyond the home folder |
 
-**Chrome is on by default.** The Chrome integration is your signed-in browser and runs outside the sandbox, so with it on a session can reach any site or repo your browser can, beyond the workspace. clx notes this at each workspace launch. `clx -w present --no-chrome Investigate` locks it for that launch: Chrome is turned off and its tools are denied. Everything else stays locked either way. Without `-w`, `--chrome` and `--no-chrome` simply turn the integration on or off.
+**Chrome is off in workspaces.** The Chrome integration is your signed-in browser and runs outside the sandbox, so with it on a session can reach any site or repo your browser can, beyond the workspace. `clx -w present --chrome Investigate` turns it on for that launch only, with a note. Everything else stays locked either way. Without `-w`, `--chrome` and `--no-chrome` simply turn the integration on or off.
 
 **GitHub:** `"github": true` opens GitHub to shell commands, and `gh` and `git` then use your normal login, which can reach every repo you can. A local sandbox can't limit that, so keep GitHub closed when the scope must hold, and push or open PRs yourself.
 
