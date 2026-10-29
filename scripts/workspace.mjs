@@ -81,6 +81,7 @@ try {
     const extra = await workspaceSettings(ws, {
       claudeDir: process.env.CLAUDE_CONFIG_DIR || undefined,
       guard: new URL("./workspace-guard.mjs", import.meta.url).pathname,
+      docker: process.env.CLX_WORKSPACE_DOCKER === "1",
       protect: [settingsFile, ...rest],
     });
     const merged = mergeSettings(base, extra);
@@ -88,6 +89,8 @@ try {
     merged.sandbox.excludedCommands = [];
     await writeFile(settingsFile, JSON.stringify(merged, null, 2));
     console.log([ws.start, ...ws.dirs].join("\n"));
+  } else if (command === "docker") {
+    console.log(resolveWorkspace(config, name).docker ? "1" : "0");
   } else {
     throw new Error(
       "Usage: workspace.mjs list|show FILE | get|delete|mcp FILE NAME | set FILE NAME ENTRY.json | rename FILE OLD NEW | apply FILE NAME SETTINGS [PROTECTED...]",

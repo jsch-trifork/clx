@@ -152,7 +152,8 @@ const within = (path, root) => path === root || path.startsWith(root + sep);
 // ---- Editing the workspaces file (clx workspaces) ----
 
 const LIST_KEYS = ["dirs", "mcp", "network", "allowRead", "fence"];
-const FLAG_KEYS = ["github", "web"];
+const FLAG_KEYS = ["github", "web", "docker"];
+const TEXT_KEYS = ["image"];
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 // Store paths as ~/… so the file stays readable and portable between machines.
@@ -165,7 +166,12 @@ export async function checkEntry(entry, home = homedir()) {
   if (!entry || typeof entry !== "object" || Array.isArray(entry))
     throw new Error("A workspace must be a JSON object.");
   for (const key of Object.keys(entry))
-    if (key !== "start" && !LIST_KEYS.includes(key) && !FLAG_KEYS.includes(key))
+    if (
+      key !== "start" &&
+      !LIST_KEYS.includes(key) &&
+      !FLAG_KEYS.includes(key) &&
+      !TEXT_KEYS.includes(key)
+    )
       throw new Error(`Unknown workspace setting '${key}'.`);
   if (typeof entry.start !== "string" || !entry.start)
     throw new Error('A workspace needs a "start" folder.');
@@ -193,6 +199,12 @@ export async function checkEntry(entry, home = homedir()) {
     if (entry[key] === undefined) continue;
     if (typeof entry[key] !== "boolean")
       throw new Error(`"${key}" must be true or false.`);
+    out[key] = entry[key];
+  }
+  for (const key of TEXT_KEYS) {
+    if (entry[key] === undefined) continue;
+    if (typeof entry[key] !== "string" || !entry[key])
+      throw new Error(`"${key}" must be a text value.`);
     out[key] = entry[key];
   }
   return out;
@@ -279,6 +291,9 @@ export function resolveWorkspace(config, name, home = homedir()) {
     mcp: entry.mcp ?? [],
     github: entry.github === true,
     web: entry.web === true,
+    // Run the session in a container (see src/docker.mjs); `clx --docker` per launch.
+    docker: entry.docker === true,
+    image: entry.image,
     // Only `clx --chrome` turns the browser on, one launch at a time.
     chrome: false,
   };
@@ -399,10 +414,41 @@ export async function workspaceSettings(ws, options = {}) {
       deny.push(...rules("Edit", join(dir, path)));
 
   const domains = [...ws.network, ...(ws.github ? GITHUB_DOMAINS : [])];
+  // In a container, the container is the sandbox: only the workspace folders exist
+  // and clx's egress proxy is the only way out. Claude Code's own sandbox can't run
+  // there (it needs privileges the container doesn't have). The deny rules stay.
+  const sandbox = options.docker
+    ? { enabled: false }
+    : {
+        enabled: true,
+        allowUnsandboxedCommands: false,
+        // Go tools such as gh need trustd to verify TLS; only relevant when GitHub is open.
+        ...(ws.github && { enableWeakerNetworkIsolation: true }),
+        filesystem: {
+          denyRead: roots,
+          allowRead: [
+            ...editOpen,
+            ...SHELL_READABLE.map((p) => join(home, p)),
+            ...ws.allowRead,
+          ],
+          allowWrite: [
+            ...ws.dirs,
+            ...SHELL_WRITABLE.map((p) => expandHome(p, home)),
+          ],
+        },
+        // strictAllowlist stops auto mode widening access per command (allowed_domains);
+        // deniedDomains keeps GitHub shut even if some other settings source allows it.
+        network: {
+          allowedDomains: domains,
+          strictAllowlist: true,
+          ...(!ws.github && { deniedDomains: GITHUB_DENIED }),
+        },
+      };
   return {
     permissions: { additionalDirectories: ws.dirs, deny },
-    // Plans default to ~/.claude/plans, shared by every project; keep them local.
-    plansDirectory: ".claude/plans",
+    // Plans default to ~/.claude/plans, shared by every project; keep them local. In a
+    // container .claude is read-only and ~/.claude is the workspace's own volume.
+    plansDirectory: options.docker ? join(claudeDir, "plans") : ".claude/plans",
     // .NET gives up when it can't list the home folder; tell it where home is.
     env: {
       DOTNET_CLI_HOME: home,
@@ -416,31 +462,7 @@ export async function workspaceSettings(ws, options = {}) {
         },
       ],
     },
-    sandbox: {
-      enabled: true,
-      allowUnsandboxedCommands: false,
-      // Go tools such as gh need trustd to verify TLS; only relevant when GitHub is open.
-      ...(ws.github && { enableWeakerNetworkIsolation: true }),
-      filesystem: {
-        denyRead: roots,
-        allowRead: [
-          ...editOpen,
-          ...SHELL_READABLE.map((p) => join(home, p)),
-          ...ws.allowRead,
-        ],
-        allowWrite: [
-          ...ws.dirs,
-          ...SHELL_WRITABLE.map((p) => expandHome(p, home)),
-        ],
-      },
-      // strictAllowlist stops auto mode widening access per command (allowed_domains);
-      // deniedDomains keeps GitHub shut even if some other settings source allows it.
-      network: {
-        allowedDomains: domains,
-        strictAllowlist: true,
-        ...(!ws.github && { deniedDomains: GITHUB_DENIED }),
-      },
-    },
+    sandbox,
   };
 }
 

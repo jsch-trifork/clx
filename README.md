@@ -189,6 +189,18 @@ Options per workspace:
 
 **GitHub:** `"github": true` opens GitHub to shell commands, and `gh` and `git` then use your normal login, which can reach every repo you can. A local sandbox can't limit that, so keep GitHub closed when the scope must hold, and push or open PRs yourself.
 
+### Docker workspaces (experimental)
+
+**Experimental.** A different way to confine a workspace: run the session in a Docker container that holds only the workspace folders, instead of Claude Code's macOS sandbox. Turn it on with `clx -w NAME --docker`, with `"docker": true` on the workspace, or with the **Docker** switch on the review screen. It needs Docker Desktop running and a token from `claude setup-token` (stored in your Keychain on first use); the Mac's own Claude login isn't available inside a container. The first launch builds a small image pinned to your Claude Code version; set `"image"` to use your own toolchain image built `FROM` it.
+
+Inside the container the session runs as your user with all capabilities dropped, `no-new-privileges`, Docker's builtin seccomp profile, a read-only root filesystem and pids/memory limits. Its network is an internal Docker network with no route out and no DNS; the only way out is clx's egress proxy, which forwards HTTPS to the allowed domains and refuses everything else (plain HTTP, IP literals, names resolving to private or host addresses, and a TLS server name that doesn't match the domain asked for). The allowlist is `api.anthropic.com`, the workspace's `"network"`, and GitHub when `"github": true`.
+
+The workspace folders are mounted read/write at their real paths, so the session edits your actual files. Files the Mac later acts on by itself are mounted read-only wherever they appear in those folders, however deeply nested: `.git` control files (`config`, `config.worktree`, hooks, worktree/submodule admin), `core.hooksPath`, `.claude`, `.vscode`, `.idea`, `.husky`, `.devcontainer`, `.mcp.json` and `.envrc`. The `worktrees/` and `modules/` folders are read-only, so no new worktree or submodule can be added. A host-side watcher removes any new git `commondir` and stops the session. After the session ends, however it ends, clx removes any rebase or cherry-pick the session left in a repo (so a later host `git rebase --continue` can't run an `exec` line the session planted; a rebase that was already in progress before launch is left alone), lists the domains the proxy blocked, and warns about any new auto-run files that appeared in the folders.
+
+Because a container or VM escape reaches whatever Docker Desktop shares into its VM, docker mode **refuses to launch** when that share scope includes your home folder (or the whole disk), or when it can't read the scope at all, rather than running with a boundary it can't stand behind. Narrow Settings → Resources → File sharing to your code folder, `~/.claude`, `~/.agents` and `/private/var/folders`, then restart Docker. `CLX_DOCKER_ALLOW_BROAD_SHARE=1` overrides the gate at your own risk.
+
+What it still can't stop, even with the share narrowed: data can leave through any allowed domain; code the session writes is still code you run later on the Mac (the after-session warning covers only the auto-run file names above, and not inside build-output folders or very deep paths); and a Docker or kernel escape is still a way out, reaching whatever remains shared. Chrome can't be combined with Docker, because the browser lives outside the container.
+
 ## Using the UI
 
 - **View:** click a family to expand its tree and reveal all skill names. Click a skill for details beside its dot on desktop or in a bottom sheet on mobile.
