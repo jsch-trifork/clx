@@ -18,6 +18,7 @@ import {
   rebaseState,
   sweepRebaseState,
   gitWatch,
+  homeExposingShares,
 } from "../src/docker.mjs";
 import { checkEntry, resolveWorkspace } from "../src/workspaces.mjs";
 import { symlink, rename, readFile } from "node:fs/promises";
@@ -544,4 +545,27 @@ test("sweepRebaseState reports the branch to return to", async (t) => {
     "main",
     "the branch name is read before deleting",
   );
+});
+
+test("homeExposingShares flags home/disk shares, allows narrow ones", () => {
+  const h = "/Users/jo";
+  // The whole disk, /Users, and the home dir itself all expose home.
+  assert.deepEqual(homeExposingShares(h, ["/tmp", "/Users", "/private"]), [
+    "/Users",
+  ]);
+  assert.deepEqual(homeExposingShares(h, ["/"]), ["/"]);
+  assert.deepEqual(homeExposingShares(h, [h + "/"]), [h]);
+  // A code folder, ~/.claude and the temp dir are scoped, not home-exposing; and a
+  // broad but non-home root (/private, /Volumes) is not flagged by this gate.
+  assert.deepEqual(
+    homeExposingShares(h, [
+      h + "/Documents/code",
+      h + "/.claude",
+      "/private/var/folders",
+      "/Volumes",
+    ]),
+    [],
+  );
+  assert.deepEqual(homeExposingShares(h, []), []);
+  assert.deepEqual(homeExposingShares(h, null), []);
 });

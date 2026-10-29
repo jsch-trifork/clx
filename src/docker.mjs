@@ -22,6 +22,18 @@ const run = promisify(execFile);
 // Domains Claude Code itself needs from inside the container.
 export const CLAUDE_DOMAINS = ["api.anthropic.com"];
 
+// Docker Desktop shares host paths into its Linux VM; a container or VM escape reaches
+// everything shared. Given the share list and the home dir, return the entries that
+// expose the home folder itself or the whole disk (so a subfolder of home, or an
+// unrelated root like /private, does not count). docker-run gates on this.
+export function homeExposingShares(home, dirs) {
+  const norm = (p) => (p.length > 1 ? p.replace(/\/+$/, "") : p);
+  const h = norm(home);
+  return (dirs ?? [])
+    .map(norm)
+    .filter((d) => d === "/" || d === h || h.startsWith(d + "/"));
+}
+
 // Per folder: files and folders the Mac acts on without you deciding to run them.
 const FOLDER_DIRS = [".claude", ".vscode", ".idea", ".husky", ".devcontainer"];
 const FOLDER_FILES = [".mcp.json", ".envrc", ".git"];

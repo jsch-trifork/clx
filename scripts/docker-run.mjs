@@ -26,6 +26,7 @@ import {
   sweepRebaseState,
   AUTORUN_NAMES,
   SKIP_DIRS,
+  homeExposingShares,
 } from "../src/docker.mjs";
 
 const exec = promisify(execFile);
@@ -36,21 +37,33 @@ const scripts = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 
 // Docker Desktop can reach every folder it shares, so a container escape would reach
 // them too. Warn when that includes the whole home folder.
-async function fileSharingWarning(home) {
-  const file = join(
-    home,
-    "Library/Group Containers/group.com.docker/settings-store.json",
-  );
-  try {
-    const { FilesharingDirectories: dirs = [] } = JSON.parse(
-      await readFile(file, "utf8"),
+// Docker Desktop shares host paths into its Linux VM, and a container or VM escape
+// reaches everything shared. Docker mode's boundary is only honest if that scope is
+// narrow, so this gates the launch: it refuses when the share exposes the home folder
+// (or the whole disk), and refuses when the scope can't be read at all, rather than
+// running with a boundary it can't confirm. CLX_DOCKER_ALLOW_BROAD_SHARE=1 overrides.
+async function checkFileSharing(home) {
+  if (process.env.CLX_DOCKER_ALLOW_BROAD_SHARE === "1") return;
+  const base = join(home, "Library/Group Containers/group.com.docker");
+  let dirs = null;
+  for (const name of ["settings-store.json", "settings.json"]) {
+    try {
+      const data = JSON.parse(await readFile(join(base, name), "utf8"));
+      dirs = data.FilesharingDirectories ?? data.filesharingDirectories ?? null;
+      if (dirs) break;
+    } catch {}
+  }
+  const narrow =
+    "Under Settings → Resources → File sharing, share only your code folder, ~/.claude, ~/.agents and /private/var/folders, then restart Docker. To proceed anyway at your own risk, set CLX_DOCKER_ALLOW_BROAD_SHARE=1.";
+  if (!dirs)
+    throw new Error(
+      `docker mode can't read Docker Desktop's file-sharing scope, so it won't launch with a boundary it can't confirm: a VM escape would reach everything Docker shares. ${narrow}`,
     );
-    const wide = dirs.filter((d) => home === d || home.startsWith(d + "/"));
-    if (wide.length)
-      say(
-        `note: Docker Desktop shares ${wide.join(", ")}, so it can reach your whole home folder. Narrow it to your code folders plus /var/folders under Settings → Resources → File sharing.`,
-      );
-  } catch {}
+  const exposing = homeExposingShares(home, dirs);
+  if (exposing.length)
+    throw new Error(
+      `docker mode won't launch: Docker Desktop shares ${exposing.join(", ")}, so your whole home folder is in its VM and a container or VM escape would reach it (~/.ssh, ~/Downloads, every project), not just the workspace. ${narrow}`,
+    );
 }
 
 const docker = async (...args) => (await exec("docker", args)).stdout.trim();
@@ -276,7 +289,7 @@ try {
     );
   const ws = resolveWorkspace(await readWorkspaces(file), name);
   const home = homedir();
-  await fileSharingWarning(home);
+  await checkFileSharing(home);
   const { uid, gid } = userInfo();
   const user = `${uid}:${gid}`;
   const version = (await exec("claude", ["--version"])).stdout.split(" ")[0];
