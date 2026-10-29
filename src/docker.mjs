@@ -1,6 +1,13 @@
 import { execFile } from "node:child_process";
 import { watch } from "node:fs";
-import { lstat, readdir, realpath, rm, rmdir } from "node:fs/promises";
+import {
+  lstat,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  rmdir,
+} from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 
@@ -39,19 +46,41 @@ async function git(dir, ...args) {
 }
 
 // A git folder's own control files: what git reads to decide which config, hooks
-// and object store to use. `commondir` and `gitdir` exist only in worktree admin
-// folders; a missing one can't get a stand-in (git refuses an empty commondir), so
-// docker-run watches for it instead (see gitWatch).
-const GIT_FILES = ["config", "config.worktree", "commondir", "gitdir"];
+// and object store to use. `config` and `config.worktree` get an empty read-only
+// stand-in when missing (an empty config is valid). `commondir` and `gitdir` exist
+// only in worktree admin folders; a missing one can't get a stand-in (git refuses an
+// empty commondir), so docker-run watches for it instead (see gitWatch).
+const GIT_CONFIGS = ["config", "config.worktree"];
+const GIT_POINTERS = ["commondir", "gitdir"];
+
+// Folders that aren't walked for nested repos and editor settings.
+const SKIP_DIRS = new Set(["node_modules"]);
+
+// Where a `.git` file points: "gitdir: <path>", relative to the file's folder.
+async function gitFileTarget(file) {
+  try {
+    const text = await readFile(file, "utf8");
+    const m = /^gitdir:\s*(.+?)\s*$/m.exec(text);
+    if (!m) return null;
+    const target = resolve(dirname(file), m[1]);
+    return await realpath(target).catch(() => target);
+  } catch {
+    return null;
+  }
+}
 
 // Plans every mount for the workspace folders, parents before children.
-//   rw          a workspace folder, a git folder outside them, or a folder bound onto
-//               itself so it can't be renamed away and replaced (rename fails on a
-//               mount point)
+//   rw          a workspace folder, a git folder (inside or outside them), or a folder
+//               bound onto itself so it can't be renamed away and replaced (rename
+//               fails on a mount point)
 //   ro          an existing file or folder the Mac acts on by itself
 //   empty-dir   a missing folder of that kind: an empty read-only stand-in, so the
 //   empty-file  session can't create it either
-// gitDirs lists every git folder, for the watcher.
+// Every folder is walked (except node_modules), so a repo, worktree or editor folder
+// nested anywhere inside gets the same protection as one at the top. A missing one
+// below the top isn't stood in for; docker-run warns about new ones afterwards.
+// gitDirs lists every git folder, for the watcher. Throws when a hooks folder can't
+// be protected because it is a workspace folder itself.
 export async function planMounts(folders) {
   const mounts = new Map();
   const add = (path, mode) => {
@@ -61,28 +90,98 @@ export async function planMounts(folders) {
     const actual = await kind(path);
     add(path, actual ? "ro" : type === "dir" ? "empty-dir" : "empty-file");
   };
-  const gitDirs = [];
+  const gitDirs = new Set();
+
+  // Under worktrees/ and modules/, a folder with a HEAD file is a git folder; anything
+  // else is a namespace (the submodule "libs/child" lives at modules/libs/child) and
+  // stays inside the read-only parent.
+  const nested = async (parent, depth, level = 0) => {
+    if (level > 6) return;
+    let entries = [];
+    try {
+      entries = await readdir(parent, { withFileTypes: true });
+    } catch {}
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const path = join(parent, entry.name);
+      if ((await kind(join(path, "HEAD"))) === "file")
+        await gitDir(path, depth);
+      else await nested(path, depth, level + 1);
+    }
+  };
 
   // One git folder: pin it, protect its control files, then its worktree admin
-  // folders and submodules. Their parent folders are read-only, so no new
-  // worktree or submodule can be added from inside.
+  // folders and submodules, and the common git folder it points at. The worktrees/
+  // and modules/ parents are read-only, so no new worktree or submodule can be added
+  // from inside.
   const gitDir = async (dir, depth) => {
-    if (depth > 6) return;
-    gitDirs.push(dir);
+    if (depth > 6 || gitDirs.has(dir)) return;
+    gitDirs.add(dir);
     add(dir, "rw");
     await protect(join(dir, "hooks"), "dir");
-    for (const name of GIT_FILES)
+    for (const name of GIT_CONFIGS) await protect(join(dir, name), "file");
+    for (const name of GIT_POINTERS)
       if (await kind(join(dir, name))) add(join(dir, name), "ro");
     for (const group of ["worktrees", "modules"]) {
       const parent = join(dir, group);
       await protect(parent, "dir");
-      let entries = [];
-      try {
-        entries = await readdir(parent, { withFileTypes: true });
-      } catch {}
-      for (const entry of entries)
-        if (entry.isDirectory())
-          await gitDir(join(parent, entry.name), depth + 1);
+      await nested(parent, depth + 1);
+    }
+    try {
+      const common = resolve(
+        dir,
+        (await readFile(join(dir, "commondir"), "utf8")).trim(),
+      );
+      await gitDir(await realpath(common).catch(() => common), depth + 1);
+    } catch {}
+  };
+
+  // A working tree: its `.git` folder or file, and the hooks folder its config names
+  // (husky and friends), which runs on every commit. The hooks path is resolved
+  // against the final mount set in a second pass (see hooksTargets), so a path in a
+  // folder processed later is still caught.
+  const hooksTargets = [];
+  const workTree = async (top, depth) => {
+    const dotGit = join(top, ".git");
+    const what = await kind(dotGit);
+    if (what === "dir")
+      await gitDir(await realpath(dotGit).catch(() => dotGit), depth);
+    else if (what === "file") {
+      add(dotGit, "ro");
+      // The `.git` entry may be a git-link file (gitdir: …) or a symlink to the real
+      // git dir; either way, find and protect that dir.
+      const target =
+        (await gitFileTarget(dotGit)) ??
+        (await realpath(dotGit).catch(() => null));
+      if (target && (await kind(target)) === "dir") await gitDir(target, depth);
+    } else return;
+    const hooksPath = await git(top, "config", "--get", "core.hooksPath");
+    if (hooksPath)
+      hooksTargets.push(
+        isAbsolute(hooksPath) ? hooksPath : resolve(top, hooksPath),
+      );
+  };
+
+  // Everything inside a workspace folder that the Mac acts on by itself.
+  const walk = async (dir, depth) => {
+    if (depth > 12) return;
+    let entries = [];
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {}
+    for (const entry of entries) {
+      if (entry.isSymbolicLink() || entry.name === ".git") continue;
+      const path = join(dir, entry.name);
+      if (
+        FOLDER_DIRS.includes(entry.name) ||
+        FOLDER_FILES.includes(entry.name)
+      ) {
+        add(path, "ro");
+        continue;
+      }
+      if (!entry.isDirectory() || SKIP_DIRS.has(entry.name)) continue;
+      await workTree(path, 0);
+      await walk(path, depth + 1);
     }
   };
 
@@ -90,24 +189,22 @@ export async function planMounts(folders) {
     add(folder, "rw");
     for (const name of FOLDER_DIRS) await protect(join(folder, name), "dir");
     for (const name of FOLDER_FILES) await protect(join(folder, name), "file");
-    const top = await git(folder, "rev-parse", "--show-toplevel");
-    if (!top) continue;
-    let common = resolve(
-      folder,
-      await git(folder, "rev-parse", "--git-common-dir"),
-    );
-    common = await realpath(common).catch(() => common);
     // A clone's .git folder is the git folder itself, not a file to stand in for.
     if ((await kind(join(folder, ".git"))) === "dir")
       mounts.delete(join(folder, ".git"));
-    await gitDir(common, 0);
-    // A hooks folder set in the config (husky and friends) runs on every commit.
-    const hooksPath = await git(folder, "config", "--get", "core.hooksPath");
-    if (hooksPath) {
-      const abs = isAbsolute(hooksPath) ? hooksPath : resolve(top, hooksPath);
-      if ([...folders, common].some((f) => within(abs, f)))
-        await protect(abs, "dir");
-    }
+    await workTree(folder, 0);
+    await walk(folder, 0);
+  }
+  // Second pass for core.hooksPath, now that every folder and git dir is mounted: a
+  // hooks folder that is itself a writable workspace folder can't be protected, so
+  // refuse; one that merely sits inside a writable mount is made read-only.
+  for (const abs of hooksTargets) {
+    if (mounts.get(abs) === "rw")
+      throw new Error(
+        `core.hooksPath resolves to ${abs}, a folder the session writes to, so its hooks can't be protected. Point core.hooksPath at a folder of its own, or leave that repo out of the docker workspace.`,
+      );
+    if ([...mounts].some(([p, m]) => m === "rw" && within(abs, p)))
+      await protect(abs, "dir");
   }
   // Anything between a mount and a protected path is pinned too.
   const roots = [...mounts].filter(([, m]) => m === "rw").map(([p]) => p);
@@ -129,7 +226,7 @@ export async function planMounts(folders) {
     mounts: [...mounts]
       .map(([path, mode]) => ({ path, mode }))
       .sort((a, b) => depth(a.path) - depth(b.path)),
-    gitDirs,
+    gitDirs: [...gitDirs],
   };
 }
 
@@ -268,4 +365,32 @@ export async function gitWatch(gitDirs, onFound) {
     check,
     close: () => watchers.forEach((w) => w.close()),
   };
+}
+
+// In-progress rebase/cherry-pick/revert state. A session can write a git-rebase-todo
+// with an `exec <command>` line; if that state is left in the repo, a later host
+// `git rebase --continue` (which `git status` tells you to run) runs the command on
+// the Mac. The session is over, so any such state is abandoned: remove what appeared
+// during it, wherever a git dir holds it.
+const REBASE_STATE = ["rebase-merge", "rebase-apply", "sequencer"];
+
+// The rebase/sequencer state present in these git dirs right now, as a Set of paths.
+export async function rebaseState(gitDirs) {
+  const found = new Set();
+  for (const dir of gitDirs)
+    for (const name of REBASE_STATE)
+      if (await kind(join(dir, name))) found.add(join(dir, name));
+  return found;
+}
+
+// Remove any rebase/sequencer state in gitDirs that is not in `before`, returning the
+// paths removed so docker-run can warn.
+export async function sweepRebaseState(gitDirs, before) {
+  const removed = [];
+  for (const path of await rebaseState(gitDirs))
+    if (!before.has(path)) {
+      await rm(path, { recursive: true, force: true }).catch(() => {});
+      removed.push(path);
+    }
+  return removed;
 }

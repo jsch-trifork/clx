@@ -22,6 +22,8 @@ import {
   pluginMounts,
   removeStandIns,
   gitWatch,
+  rebaseState,
+  sweepRebaseState,
 } from "../src/docker.mjs";
 
 const exec = promisify(execFile);
@@ -206,19 +208,65 @@ const egress = `${id}-egress`;
 let plan;
 let tmp;
 let watcher;
-let cleaned = false;
-async function cleanup() {
-  if (cleaned) return;
-  cleaned = true;
-  watcher?.close();
+let folders = [];
+let before = new Set();
+let rebaseBefore = new Set();
+let stopped = [];
+let finished = false;
+
+// Everything that must happen once the session is over, however it ended. The Claude
+// container is killed first, so nothing inside can race the checks that follow: the
+// final commondir sweep, removing any rebase/cherry-pick state the session left
+// behind (a later host `git rebase --continue` would run its `exec` lines), the
+// proxy's blocked list (read before the proxy goes), then the containers, network and
+// stand-ins, and last the warning about new auto-run files.
+async function finish() {
+  if (finished) return;
+  finished = true;
   await quiet("rm", "-f", id);
+  if (watcher) {
+    stopped.push(...(await watcher.check()));
+    watcher.close();
+  }
+  if (stopped.length)
+    say(
+      `STOPPED: the session tried to redirect git to another config (${stopped.join(", ")}). It was removed and the session ended.`,
+    );
+  if (plan) {
+    const rebased = await sweepRebaseState(plan.gitDirs, rebaseBefore);
+    if (rebased.length)
+      say(
+        `removed an in-progress rebase/cherry-pick the session left in git (do not run 'git rebase --continue'): ${rebased.join(", ")}`,
+      );
+  }
+  const blocked = (
+    await exec("docker", ["logs", egress]).catch((e) => e)
+  ).stderr
+    ?.split("\n")
+    .filter((l) => l.startsWith("clx-egress: blocked"));
+  if (blocked?.length) {
+    const hosts = [...new Set(blocked.map((l) => l.split(" ")[2]))];
+    say(
+      `the network blocked: ${hosts.join(", ")} (add a domain under "network" if it's needed)`,
+    );
+  }
   await quiet("rm", "-f", egress);
   await quiet("network", "rm", network);
   if (plan) await removeStandIns(plan);
   if (tmp) await rm(tmp, { recursive: true, force: true });
+  const after = await watched(folders);
+  const appeared = [...after].filter((p) => !before.has(p));
+  if (appeared.length)
+    say(
+      `WARNING: the session created files your Mac may run on its own. Check them before using git or an editor there:\n  ${appeared.join("\n  ")}`,
+    );
 }
-for (const signal of ["SIGHUP", "SIGTERM"])
-  process.on(signal, () => cleanup().finally(() => process.exit(129)));
+for (const [signal, code] of [
+  ["SIGHUP", 129],
+  ["SIGINT", 130],
+  ["SIGTERM", 143],
+])
+  process.on(signal, () => finish().finally(() => process.exit(code)));
 
 try {
   if (!(await quiet("info", "--format", "{{.ServerVersion}}")))
@@ -234,9 +282,12 @@ try {
   const image = await ensureImage(ws, version);
   const auth = await token();
 
-  const folders = [ws.start, ...ws.dirs];
+  folders = [ws.start, ...ws.dirs];
   plan = await planMounts(folders);
-  const before = await watched(folders);
+  before = await watched(folders);
+  // Rebase/cherry-pick state that was already in progress before launch is the user's
+  // own; only state that appears during the session is swept at the end.
+  rebaseBefore = await rebaseState(plan.gitDirs);
   tmp = await mkdtemp(join(tmpdir(), "clx-docker-"));
   const standIn = join(tmp, "empty");
   await writeFile(standIn, "");
@@ -348,12 +399,20 @@ try {
     tty: process.stdin.isTTY,
     claudeArgs,
   });
+  // Git folders outside the workspace folders (a linked worktree's main repo) are
+  // mounted too, so git works; say so.
+  const shared = plan.mounts
+    .filter(
+      ({ path, mode }) =>
+        mode === "rw" &&
+        !folders.some((f) => path === f || path.startsWith(f + "/")),
+    )
+    .map(({ path }) => path);
   say(
-    `docker workspace '${name}': only ${folders.length} folder(s) mounted; network: ${allow.join(", ")}`,
+    `docker workspace '${name}': ${folders.length} folder(s) mounted${shared.length ? ` plus the git folder(s) ${shared.join(", ")}` : ""}; network: ${allow.join(", ")}`,
   );
-  let stopped = [];
   watcher = await gitWatch(plan.gitDirs, (found) => {
-    stopped = found;
+    stopped.push(...found);
     quiet("rm", "-f", id);
   });
   const code = await new Promise((done) =>
@@ -363,32 +422,10 @@ try {
     }).on("exit", (c) => done(c ?? 1)),
   );
 
-  stopped.push(...(await watcher.check()));
-  if (stopped.length)
-    say(
-      `STOPPED: the session tried to redirect git to another config (${stopped.join(", ")}). It was removed and the session ended.`,
-    );
-  const blocked = (
-    await exec("docker", ["logs", egress]).catch((e) => e)
-  ).stderr
-    ?.split("\n")
-    .filter((l) => l.startsWith("clx-egress: blocked"));
-  if (blocked?.length) {
-    const hosts = [...new Set(blocked.map((l) => l.split(" ")[2]))];
-    say(
-      `the network blocked: ${hosts.join(", ")} (add a domain under "network" if it's needed)`,
-    );
-  }
-  await cleanup();
-  const after = await watched(folders);
-  const appeared = [...after].filter((p) => !before.has(p));
-  if (appeared.length)
-    say(
-      `WARNING: the session created files your Mac may run on its own. Check them before using git or an editor there:\n  ${appeared.join("\n  ")}`,
-    );
+  await finish();
   process.exitCode = code;
 } catch (error) {
   say(error.message);
-  await cleanup();
+  await finish();
   process.exitCode = 1;
 }
