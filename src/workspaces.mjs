@@ -284,6 +284,34 @@ export function resolveWorkspace(config, name, home = homedir()) {
   };
 }
 
+// What a workspace opens, for the screen shown before a launch from the menu.
+export function describeWorkspace(ws, home = homedir()) {
+  const show = (p) => tildify(p, home);
+  const row = (label, value) => `  ${label.padEnd(9)} ${value}`;
+  return [
+    `Workspace '${ws.name}'`,
+    row("Start", show(ws.start)),
+    row("Folders", ws.dirs.length ? ws.dirs.map(show).join(", ") : "none"),
+    row(
+      "MCP",
+      ws.mcp.length
+        ? `${ws.mcp.join(", ")} (these run outside the sandbox)`
+        : "none",
+    ),
+    row(
+      "Network",
+      ws.network.length ? ws.network.join(", ") : "none for shell commands",
+    ),
+    row(
+      "GitHub",
+      ws.github
+        ? "OPEN: git and gh use your login and reach every repo you can"
+        : "closed",
+    ),
+    row("Web", ws.web ? "WebFetch on" : "WebFetch off"),
+  ];
+}
+
 // Every entry under `root` that is neither an open folder nor on the way to one.
 // Deny rules beat allow rules, so the fence is built from the siblings instead.
 async function outside(root, open) {
@@ -414,6 +442,29 @@ export async function workspaceSettings(ws, options = {}) {
       },
     },
   };
+}
+
+// A workspace launch skips Claude Code's own settings files (--setting-sources ""), so
+// a stray folder, domain or excluded command in them can't widen the scope. clx passes
+// them in through --settings instead, minus what would widen it. Your own settings
+// keep everything else; a repo's settings keep only their permission rules, because
+// hooks, env (e.g. ANTHROPIC_BASE_URL), helpers and plugins there are the repo's code
+// running as you, outside the sandbox.
+export function userSettings(settings) {
+  const { sandbox, ...out } = settings ?? {};
+  if (out.permissions) {
+    const { additionalDirectories, ...permissions } = out.permissions;
+    out.permissions = permissions;
+  }
+  return out;
+}
+
+export function projectSettings(settings) {
+  const { allow, ask, deny } = settings?.permissions ?? {};
+  const permissions = Object.fromEntries(
+    Object.entries({ allow, ask, deny }).filter(([, v]) => Array.isArray(v)),
+  );
+  return Object.keys(permissions).length ? { permissions } : {};
 }
 
 // Deep merge where arrays concatenate, so the user's own deny rules survive.

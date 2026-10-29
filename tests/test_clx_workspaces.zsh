@@ -27,16 +27,19 @@ print -r -- "\${ENABLE_CLAUDEAI_MCP_SERVERS:-unset}" > "$out/connectors"
 local i=1; while (( i <= \$# )); do
   [[ "\${@[i]}" == --settings ]] && cp "\${@[i+1]}" "$out/s.json"
   [[ "\${@[i]}" == --mcp-config ]] && cp "\${@[i+1]}" "$out/m.json"
+  [[ "\${@[i]}" == --setting-sources ]] && print -r -- "<\${@[i+1]}>" > "$out/sources"
   (( i++ ))
 done
 exit 0
 EOF
   chmod +x "$stub/claude"
 
-  # gum stub: menu answers keyed by header; every header is logged.
+  # gum stub: menu answers keyed by header; every header is logged. A *_seq file
+  # answers one line per call, for menus shown more than once.
   cat > "$stub/gum" <<EOF
 #!/bin/zsh
 emulate -L zsh
+pop() { local f="\$1"; print -r -- "\$(head -1 "\$f")"; tail -n +2 "\$f" > "\$f.t"; mv "\$f.t" "\$f"; }
 [[ "\$1" == choose ]] && cat >/dev/null
 local header=""
 while (( \$# )); do case "\$1" in --header) header="\$2"; shift 2;; --selected) shift 2;; *) shift;; esac; done
@@ -44,7 +47,8 @@ print -r -- "\$header" >> "$out/menus"
 case "\$header" in
   "Preset:")    print -r -- "p1" ;;
   "Preset '"*)  print -r -- "use as-is" ;;
-  "Workspace:") cat "$out/ws_choice" ;;
+  "Workspace:") if [[ -s "$out/ws_choice_seq" ]]; then pop "$out/ws_choice_seq"; else cat "$out/ws_choice"; fi ;;
+  "Workspace '"*) if [[ -s "$out/ws_review_seq" ]]; then pop "$out/ws_review_seq"; else print -r -- "Start"; fi ;;
 esac
 exit 0
 EOF
@@ -65,26 +69,29 @@ EOF
     "$(jq -r --arg r "Read(/$work/home/code/other/**)" '.permissions.deny | index($r) != null' "$out/s.json")" "true"
   assert_json_eq "ws_added_dir" "$(jq -c '.permissions.additionalDirectories' "$out/s.json")" "[\"$work/home/code/org/ui\"]"
   assert_eq "ws_add_dir_flag" "$([[ "$(<"$out/argv")" == *"--add-dir $work/home/code/org/ui"* ]] && echo yes)" "yes"
-  # Chrome is on by default in workspaces; the rest stays locked.
-  assert_eq "ws_chrome_default_on" "$([[ "$(<"$out/argv")" == *"--chrome"* && "$(<"$out/argv")" != *"--no-chrome"* ]] && echo yes)" "yes"
-  assert_eq "ws_chrome_default_not_denied" "$(jq '.permissions.deny | index("mcp__claude-in-chrome") == null' "$out/s.json")" "true"
+  # Chrome is off by default in workspaces, and denied.
+  assert_eq "ws_chrome_default_off" "$([[ "$(<"$out/argv")" == *"--no-chrome"* ]] && echo yes)" "yes"
+  assert_eq "ws_chrome_default_denied" "$(jq '.permissions.deny | index("mcp__claude-in-chrome") != null' "$out/s.json")" "true"
+  # Claude Code's own settings files are skipped; clx passes their safe parts in.
+  assert_eq "ws_setting_sources_none" "$(<"$out/sources")" "<>"
   assert_json_eq "ws_mcp_filtered" "$(jq -c '.mcpServers|keys' "$out/m.json")" '["context7"]'
   assert_eq "ws_connectors_off" "$(<"$out/connectors")" "false"
   assert_eq "ws_guard_hook" "$(jq -r '.hooks.PreToolUse[0].matcher' "$out/s.json")" "Agent"
   assert_eq "ws_no_menus_when_direct" "$([[ -f "$out/menus" ]] && echo menus)" ""
+  assert_eq "ws_no_review_when_direct" "$([[ -f "$out/menus" ]] && grep -c "^Workspace '" "$out/menus")" ""
 
-  # --- Chrome default on, with a note; --no-chrome locks it for one launch ---
+  # --- Chrome off and quiet by default; --chrome turns it on for one launch, with a note ---
   ( PATH="$stub:$PATH"; clx -w present p1 >/dev/null 2>"$out/chrome_err" )
+  assert_eq "ws_chrome_default_quiet" "$(grep -c 'Chrome is on' "$out/chrome_err")" "0"
+  ( PATH="$stub:$PATH"; clx -w present --chrome p1 >/dev/null 2>"$out/chrome_err" )
+  assert_eq "ws_chrome_exit" "$?" "0"
+  assert_eq "ws_chrome_flag" "$([[ "$(<"$out/argv")" == *"--chrome"* && "$(<"$out/argv")" != *"--no-chrome"* ]] && echo yes)" "yes"
+  assert_eq "ws_chrome_not_denied" "$(jq '.permissions.deny | index("mcp__claude-in-chrome") == null' "$out/s.json")" "true"
   assert_eq "ws_chrome_rest_locked" "$(jq '.permissions.deny | index("RemoteTrigger") != null' "$out/s.json")" "true"
   assert_eq "ws_chrome_sandbox" "$(jq -r '.sandbox.enabled' "$out/s.json")" "true"
   assert_eq "ws_chrome_notes" "$(grep -c 'Chrome is on' "$out/chrome_err")" "1"
-  ( PATH="$stub:$PATH"; clx -w present --no-chrome p1 >/dev/null 2>"$out/chrome_err" )
-  assert_eq "ws_no_chrome_exit" "$?" "0"
-  assert_eq "ws_no_chrome_flag" "$([[ "$(<"$out/argv")" == *"--no-chrome"* ]] && echo yes)" "yes"
-  assert_eq "ws_no_chrome_denied" "$(jq '.permissions.deny | index("mcp__claude-in-chrome") != null' "$out/s.json")" "true"
-  assert_eq "ws_no_chrome_quiet" "$(grep -c 'Chrome is on' "$out/chrome_err")" "0"
   ( PATH="$stub:$PATH"; clx -w present p1 >/dev/null 2>&1 )
-  assert_eq "ws_chrome_back_on_next_launch" "$(jq '.permissions.deny | index("mcp__claude-in-chrome") == null' "$out/s.json")" "true"
+  assert_eq "ws_chrome_back_off_next_launch" "$(jq '.permissions.deny | index("mcp__claude-in-chrome") != null' "$out/s.json")" "true"
 
   # --- Direct without -w: unscoped, no workspace menu ---
   rm -f "$out/s.json"
@@ -95,6 +102,7 @@ EOF
   assert_json_eq "ws_unscoped_mcp_kept" "$(jq -c '.mcpServers|keys' "$out/m.json")" '["context7","playwright"]'
   assert_eq "ws_unscoped_connectors" "$(<"$out/connectors")" "unset"
   assert_eq "ws_unscoped_no_sandbox" "$(jq -r '.sandbox // "none"' "$out/s.json")" "none"
+  assert_eq "ws_unscoped_setting_sources" "$([[ "$(<"$out/argv")" == *"--setting-sources"* ]] && echo yes)" ""
 
   # --- Menus: Workspace menu picks 'present' ---
   print -r -- "present" > "$out/ws_choice"
@@ -102,6 +110,28 @@ EOF
   assert_eq "ws_menu_exit" "$?" "0"
   assert_eq "ws_menu_shown" "$(grep -c '^Workspace:$' "$out/menus")" "1"
   assert_eq "ws_menu_cwd" "$(<"$out/cwd")" "$work/home/code/org/present"
+  assert_eq "ws_review_shown" "$(grep -c "^Workspace 'present':$" "$out/menus")" "1"
+  assert_eq "ws_review_chrome_off" "$([[ "$(<"$out/argv")" == *"--no-chrome"* ]] && echo yes)" "yes"
+
+  # --- Review screen: summary, Chrome toggle for this launch, Back ---
+  print -rl -- "Turn Chrome on for this launch" "Start" > "$out/ws_review_seq"
+  ( PATH="$stub:$PATH"; clx >/dev/null 2>"$out/review_err" )
+  assert_eq "ws_review_chrome_on" "$([[ "$(<"$out/argv")" == *"--chrome"* && "$(<"$out/argv")" != *"--no-chrome"* ]] && echo yes)" "yes"
+  assert_eq "ws_review_chrome_allowed" "$(jq '.permissions.deny | index("mcp__claude-in-chrome") == null' "$out/s.json")" "true"
+  assert_eq "ws_review_summary" "$(grep -c 'Folders   ~/code/org/ui' "$out/review_err")" "2"
+  assert_eq "ws_review_github_closed" "$(grep -c 'GitHub    closed' "$out/review_err")" "2"
+  assert_eq "ws_review_chrome_note" "$(grep -c 'Chrome    ON for this launch' "$out/review_err")" "1"
+  print -rl -- "Turn Chrome on for this launch" "Turn Chrome off" "Start" > "$out/ws_review_seq"
+  ( PATH="$stub:$PATH"; clx >/dev/null 2>&1 )
+  assert_eq "ws_review_chrome_back_off" "$([[ "$(<"$out/argv")" == *"--no-chrome"* ]] && echo yes)" "yes"
+  # Back returns to the workspace list; picking none there launches unscoped.
+  rm -f "$out/menus"
+  print -rl -- "present" "— none (this folder, unscoped) —" > "$out/ws_choice_seq"
+  print -rl -- "Back" > "$out/ws_review_seq"
+  ( PATH="$stub:$PATH"; cd "$work"; clx >/dev/null 2>&1 )
+  assert_eq "ws_review_back_exit" "$?" "0"
+  assert_eq "ws_review_back_list_again" "$(grep -c '^Workspace:$' "$out/menus")" "2"
+  assert_eq "ws_review_back_unscoped" "$(<"$out/cwd")" "$work"
 
   # --- Launch fetches workspace clones, so the session sees new remote commits ---
   local remote="$work/remote.git" pusher="$work/pusher" present="$work/home/code/org/present"

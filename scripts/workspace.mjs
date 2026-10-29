@@ -6,17 +6,22 @@
 //   rename  <workspaces.json> <old> <new>
 //   delete  <workspaces.json> <name>
 //   mcp     <workspaces.json> <name>         → MCP servers the workspace allows, one per line
+//   summary <workspaces.json> <name>         → what the workspace opens, for the launch screen
 //   apply   <workspaces.json> <name> <settings.json> [protected paths...]
-//           → merges the workspace's rules into settings.json and prints the start
-//             folder, then the added folders, one per line. Protected paths (clx's
+//           → merges the workspace's rules into settings.json (your settings and the
+//             start folder's permission rules, minus anything that would widen the
+//             scope) and prints the start folder, then the added folders, one per line. Protected paths (clx's
 //             own temp files) are denied to Claude's edit tools.
 import { readFile, writeFile } from "node:fs/promises";
-import { basename } from "node:path";
+import { basename, join } from "node:path";
 import {
   readWorkspaces,
   resolveWorkspace,
+  describeWorkspace,
   workspaceSettings,
   mergeSettings,
+  userSettings,
+  projectSettings,
   saveWorkspace,
   renameWorkspace,
   deleteWorkspace,
@@ -48,6 +53,8 @@ try {
     await renameWorkspace(file, name, arg);
   } else if (command === "delete") {
     await deleteWorkspace(file, name);
+  } else if (command === "summary") {
+    console.log(describeWorkspace(resolveWorkspace(config, name)).join("\n"));
   } else if (command === "mcp") {
     for (const server of resolveWorkspace(config, name).mcp)
       console.log(server);
@@ -56,7 +63,21 @@ try {
     const ws = resolveWorkspace(config, name);
     // `clx --chrome` lifts the browser block for this launch only.
     if (process.env.CLX_WORKSPACE_CHROME === "1") ws.chrome = true;
-    const base = JSON.parse((await readFile(settingsFile, "utf8")) || "{}");
+    let base = userSettings(
+      JSON.parse((await readFile(settingsFile, "utf8")) || "{}"),
+    );
+    // Claude Code won't read the start folder's settings itself; keep their rules.
+    for (const name of ["settings.json", "settings.local.json"]) {
+      let project;
+      try {
+        project = JSON.parse(
+          await readFile(join(ws.start, ".claude", name), "utf8"),
+        );
+      } catch {
+        continue;
+      }
+      base = mergeSettings(base, projectSettings(project));
+    }
     const extra = await workspaceSettings(ws, {
       claudeDir: process.env.CLAUDE_CONFIG_DIR || undefined,
       guard: new URL("./workspace-guard.mjs", import.meta.url).pathname,

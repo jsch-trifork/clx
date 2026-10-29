@@ -163,13 +163,14 @@ A workspace limits a session to a few folders, independent of the preset. Preset
 
 Manage them with `clx workspaces`, which works like `clx prompts`: create a workspace (name, start folder, extra folders, allowed MCP servers), edit it, open all its settings in your editor, rename or delete it. Every save is checked first: missing folders and unknown settings are refused, so a typo can't leave a workspace weaker than intended. Deleting a workspace never touches its folders. You can also edit the file by hand.
 
-Launch with `clx -w present Investigate` (or `--workspace present`), or pick the workspace in the menu after the preset. `clx <preset>` without `-w` stays unscoped. Before launching, clx runs `git fetch` in each workspace folder that is a clone, so the session starts with the latest branches and commits. Claude starts in `start`, with `dirs` added. Everything else is off limits:
+Launch with `clx -w present Investigate` (or `--workspace present`), or pick the workspace in the menu after the preset. Picked from the menu, a workspace shows what it opens before it starts (folders, MCP servers, network, GitHub, web) with Start, a Chrome switch for this launch, Edit workspace and Back. Only Chrome can be switched there. The rest is the workspace's own definition, changed with Edit workspace, so a workspace means the same thing every launch. `clx -w NAME` skips the screen. `clx <preset>` without `-w` stays unscoped. Before launching, clx runs `git fetch` in each workspace folder that is a clone, so the session starts with the latest branches and commits. Claude starts in `start`, with `dirs` added. Everything else is off limits:
 
 - **Files:** everything in your home folder outside the workspace folders is denied to Claude's file tools and subagents. That includes other projects wherever they live, other projects' Claude history, shared plans and scratch space. Skills stay readable. The list is generated at each launch, so new folders are covered automatically.
 - **Shell commands:** Claude Code's sandbox is on, and Claude can't run commands outside it. The shell can read the workspace folders and common toolchain folders (Node, Bun, Deno, .NET, JVM, Python/pyenv/conda, Go, Rust, Ruby, Dart/Flutter, asdf, the Android SDK), not the rest of your home folder. If a build fails with "Operation not permitted" on a tool's folder, add it under `"allowRead"`.
 - **Network:** shell commands have no network access by default, and GitHub is always blocked. The allowlist is strict, so auto mode can't widen it command by command.
 - **Tools that act outside the sandbox are removed:** claude.ai connectors, cloud routines, messaging other Claude sessions, and WebFetch. A hook refuses cloud (remote) subagents. MCP servers are limited to the workspace's `"mcp"` list.
 - **Its own limits:** Claude can't edit the settings clx generated, Claude or project settings, hooks, `.mcp.json`, git hooks, or programs in `/opt/homebrew` and `/usr/local`.
+- **Other settings can't widen it:** Claude Code doesn't load its own settings files in a workspace. clx passes your settings in itself, without their sandbox block and extra folders. From the start folder's `.claude/settings.json` and `settings.local.json` it keeps only the allow, ask and deny rules. A repo's hooks, env, helpers and plugins don't run, because they'd run as you outside the sandbox.
 
 Workspaces need Claude Code 2.1.281 or newer. Older versions silently ignore some of the sandbox settings, so clx refuses to launch a workspace on them and says why. Launches without `-w` aren't affected.
 
@@ -184,7 +185,7 @@ Options per workspace:
 | `"github": true` | Open GitHub to shell commands (see below) |
 | `"fence": ["/Volumes/code"]` | Extra roots to hide beyond the home folder |
 
-**Chrome is on by default.** The Chrome integration is your signed-in browser and runs outside the sandbox, so with it on a session can reach any site or repo your browser can, beyond the workspace. clx notes this at each workspace launch. `clx -w present --no-chrome Investigate` locks it for that launch: Chrome is turned off and its tools are denied. Everything else stays locked either way. Without `-w`, `--chrome` and `--no-chrome` simply turn the integration on or off.
+**Chrome is off in workspaces.** The Chrome integration is your signed-in browser and runs outside the sandbox, so with it on a session can reach any site or repo your browser can, beyond the workspace. `clx -w present --chrome Investigate` turns it on for that launch only, with a note. Everything else stays locked either way. Without `-w`, `--chrome` and `--no-chrome` simply turn the integration on or off.
 
 **GitHub:** `"github": true` opens GitHub to shell commands, and `gh` and `git` then use your normal login, which can reach every repo you can. A local sandbox can't limit that, so keep GitHub closed when the scope must hold, and push or open PRs yourself.
 
