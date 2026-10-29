@@ -7,6 +7,7 @@ import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import {
   resolveWorkspace,
+  describeWorkspace,
   workspaceSettings,
   mergeSettings,
   projectSlug,
@@ -458,4 +459,31 @@ test("renaming keeps order and refuses clashes; deleting removes only the entry"
     await exec("test", ["-d", join(code, "dagsplan")]),
     "folders are untouched",
   );
+});
+
+test("the launch screen says what a workspace opens", () => {
+  const home = "/Users/me";
+  const ws = resolveWorkspace(
+    {
+      fence: [],
+      workspaces: {
+        present: {
+          start: "~/code/present",
+          dirs: ["~/code/ui"],
+          mcp: ["context7"],
+          github: true,
+        },
+      },
+    },
+    "present",
+    home,
+  );
+  const lines = describeWorkspace(ws, home);
+  assert.equal(lines[0], "Workspace 'present'");
+  assert.ok(lines.includes("  Start     ~/code/present"));
+  assert.ok(lines.includes("  Folders   ~/code/ui"));
+  assert.ok(lines.some((l) => l.includes("context7 (these run outside")));
+  assert.ok(lines.includes("  Network   none for shell commands"));
+  assert.ok(lines.some((l) => l.startsWith("  GitHub    OPEN:")));
+  assert.ok(lines.includes("  Web       WebFetch off"));
 });

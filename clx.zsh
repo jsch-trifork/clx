@@ -384,6 +384,33 @@ _clx_workspace_fetch() {
   done
 }
 
+# Before a workspace picked from the menu starts: show what it opens and let this
+# launch turn Chrome on. Folders, network, GitHub and web are the workspace's own
+# definition, changed with "Edit workspace", so it means the same thing every launch.
+# Sets the caller's $chrome. Returns 0 to start, 2 to go back to the workspace list.
+_clx_workspace_review() {
+  local file="$1" name="$2" catalog="$3" pick toggle
+  while :; do
+    print -ru2 -- ""
+    command node "$_CLX_SOURCE_DIR/scripts/workspace.mjs" summary "$file" "$name" >&2 || return 1
+    if [[ "$chrome" == 1 ]]; then
+      print -ru2 -- "  Chrome    ON for this launch: your signed-in browser reaches beyond the workspace"
+      toggle="Turn Chrome off"
+    else
+      print -ru2 -- "  Chrome    off"
+      toggle="Turn Chrome on for this launch"
+    fi
+    pick=$(print -rl -- "Start" "$toggle" "Edit workspace" "Back" | gum choose --header "Workspace '$name':") || return 1
+    case "$pick" in
+      Start) return 0 ;;
+      "Turn Chrome on"*) chrome=1 ;;
+      "Turn Chrome off") chrome=0 ;;
+      "Edit workspace") _clx_workspace_edit "$file" "$name" "$(_clx_ws get "$file" "$name")" "$catalog" ;;
+      Back) return 2 ;;
+    esac
+  done
+}
+
 # ---- clx workspaces: create, edit, rename and delete workspaces ----
 _clx_ws() { command node "$_CLX_SOURCE_DIR/scripts/workspace.mjs" "$@"; }
 
@@ -609,13 +636,20 @@ clx() {
   done
 
   # ---- Workspace selection (menus only; direct `clx <preset>` stays unscoped) ----
+  # A workspace picked here gets a review screen before it starts; `clx -w NAME` doesn't.
   if [[ -z "$workspace" ]] && (( ! $# )) && [[ -f "$workspaces_file" ]]; then
     local -a wnames
-    wnames=("${(@f)$(command node "$_CLX_SOURCE_DIR/scripts/workspace.mjs" list "$workspaces_file")}"); wnames=("${(@)wnames:#}")
-    if (( ${#wnames[@]} )); then
+    local review
+    while :; do
+      wnames=("${(@f)$(command node "$_CLX_SOURCE_DIR/scripts/workspace.mjs" list "$workspaces_file")}"); wnames=("${(@)wnames:#}")
+      (( ${#wnames[@]} )) || break
       choice=$(print -rl -- "— none (this folder, unscoped) —" "${wnames[@]}" | gum choose --header "Workspace:") || return 1
-      [[ "$choice" != "— none"* ]] && workspace="$choice"
-    fi
+      [[ "$choice" == "— none"* ]] && break
+      _clx_workspace_review "$workspaces_file" "$choice" "$catalog"
+      review=$?
+      (( review == 0 )) && { workspace="$choice"; break; }
+      (( review == 2 )) || return 1
+    done
   fi
 
   if [[ -n "$workspace" ]]; then

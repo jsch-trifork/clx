@@ -34,10 +34,12 @@ exit 0
 EOF
   chmod +x "$stub/claude"
 
-  # gum stub: menu answers keyed by header; every header is logged.
+  # gum stub: menu answers keyed by header; every header is logged. A *_seq file
+  # answers one line per call, for menus shown more than once.
   cat > "$stub/gum" <<EOF
 #!/bin/zsh
 emulate -L zsh
+pop() { local f="\$1"; print -r -- "\$(head -1 "\$f")"; tail -n +2 "\$f" > "\$f.t"; mv "\$f.t" "\$f"; }
 [[ "\$1" == choose ]] && cat >/dev/null
 local header=""
 while (( \$# )); do case "\$1" in --header) header="\$2"; shift 2;; --selected) shift 2;; *) shift;; esac; done
@@ -45,7 +47,8 @@ print -r -- "\$header" >> "$out/menus"
 case "\$header" in
   "Preset:")    print -r -- "p1" ;;
   "Preset '"*)  print -r -- "use as-is" ;;
-  "Workspace:") cat "$out/ws_choice" ;;
+  "Workspace:") if [[ -s "$out/ws_choice_seq" ]]; then pop "$out/ws_choice_seq"; else cat "$out/ws_choice"; fi ;;
+  "Workspace '"*) if [[ -s "$out/ws_review_seq" ]]; then pop "$out/ws_review_seq"; else print -r -- "Start"; fi ;;
 esac
 exit 0
 EOF
@@ -75,6 +78,7 @@ EOF
   assert_eq "ws_connectors_off" "$(<"$out/connectors")" "false"
   assert_eq "ws_guard_hook" "$(jq -r '.hooks.PreToolUse[0].matcher' "$out/s.json")" "Agent"
   assert_eq "ws_no_menus_when_direct" "$([[ -f "$out/menus" ]] && echo menus)" ""
+  assert_eq "ws_no_review_when_direct" "$([[ -f "$out/menus" ]] && grep -c "^Workspace '" "$out/menus")" ""
 
   # --- Chrome off and quiet by default; --chrome turns it on for one launch, with a note ---
   ( PATH="$stub:$PATH"; clx -w present p1 >/dev/null 2>"$out/chrome_err" )
@@ -106,6 +110,28 @@ EOF
   assert_eq "ws_menu_exit" "$?" "0"
   assert_eq "ws_menu_shown" "$(grep -c '^Workspace:$' "$out/menus")" "1"
   assert_eq "ws_menu_cwd" "$(<"$out/cwd")" "$work/home/code/org/present"
+  assert_eq "ws_review_shown" "$(grep -c "^Workspace 'present':$" "$out/menus")" "1"
+  assert_eq "ws_review_chrome_off" "$([[ "$(<"$out/argv")" == *"--no-chrome"* ]] && echo yes)" "yes"
+
+  # --- Review screen: summary, Chrome toggle for this launch, Back ---
+  print -rl -- "Turn Chrome on for this launch" "Start" > "$out/ws_review_seq"
+  ( PATH="$stub:$PATH"; clx >/dev/null 2>"$out/review_err" )
+  assert_eq "ws_review_chrome_on" "$([[ "$(<"$out/argv")" == *"--chrome"* && "$(<"$out/argv")" != *"--no-chrome"* ]] && echo yes)" "yes"
+  assert_eq "ws_review_chrome_allowed" "$(jq '.permissions.deny | index("mcp__claude-in-chrome") == null' "$out/s.json")" "true"
+  assert_eq "ws_review_summary" "$(grep -c 'Folders   ~/code/org/ui' "$out/review_err")" "2"
+  assert_eq "ws_review_github_closed" "$(grep -c 'GitHub    closed' "$out/review_err")" "2"
+  assert_eq "ws_review_chrome_note" "$(grep -c 'Chrome    ON for this launch' "$out/review_err")" "1"
+  print -rl -- "Turn Chrome on for this launch" "Turn Chrome off" "Start" > "$out/ws_review_seq"
+  ( PATH="$stub:$PATH"; clx >/dev/null 2>&1 )
+  assert_eq "ws_review_chrome_back_off" "$([[ "$(<"$out/argv")" == *"--no-chrome"* ]] && echo yes)" "yes"
+  # Back returns to the workspace list; picking none there launches unscoped.
+  rm -f "$out/menus"
+  print -rl -- "present" "— none (this folder, unscoped) —" > "$out/ws_choice_seq"
+  print -rl -- "Back" > "$out/ws_review_seq"
+  ( PATH="$stub:$PATH"; cd "$work"; clx >/dev/null 2>&1 )
+  assert_eq "ws_review_back_exit" "$?" "0"
+  assert_eq "ws_review_back_list_again" "$(grep -c '^Workspace:$' "$out/menus")" "2"
+  assert_eq "ws_review_back_unscoped" "$(<"$out/cwd")" "$work"
 
   # --- Launch fetches workspace clones, so the session sees new remote commits ---
   local remote="$work/remote.git" pusher="$work/pusher" present="$work/home/code/org/present"

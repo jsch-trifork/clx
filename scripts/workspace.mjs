@@ -6,6 +6,7 @@
 //   rename  <workspaces.json> <old> <new>
 //   delete  <workspaces.json> <name>
 //   mcp     <workspaces.json> <name>         → MCP servers the workspace allows, one per line
+//   summary <workspaces.json> <name>         → what the workspace opens, for the launch screen
 //   apply   <workspaces.json> <name> <settings.json> [protected paths...]
 //           → merges the workspace's rules into settings.json (your settings and the
 //             start folder's permission rules, minus anything that would widen the
@@ -16,6 +17,7 @@ import { basename, join } from "node:path";
 import {
   readWorkspaces,
   resolveWorkspace,
+  describeWorkspace,
   workspaceSettings,
   mergeSettings,
   userSettings,
@@ -51,6 +53,8 @@ try {
     await renameWorkspace(file, name, arg);
   } else if (command === "delete") {
     await deleteWorkspace(file, name);
+  } else if (command === "summary") {
+    console.log(describeWorkspace(resolveWorkspace(config, name)).join("\n"));
   } else if (command === "mcp") {
     for (const server of resolveWorkspace(config, name).mcp)
       console.log(server);
