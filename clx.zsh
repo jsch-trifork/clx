@@ -387,26 +387,46 @@ _clx_workspace_fetch() {
 # Before a workspace picked from the menu starts: show what it opens and let this
 # launch turn Chrome on. Folders, network, GitHub and web are the workspace's own
 # definition, changed with "Edit workspace", so it means the same thing every launch.
-# Sets the caller's $chrome. Returns 0 to start, 2 to go back to the workspace list.
+# Sets the caller's $chrome and $ws_docker. Returns 0 to start, 2 to go back to the list.
 _clx_workspace_review() {
-  local file="$1" name="$2" catalog="$3" pick toggle
+  local file="$1" name="$2" catalog="$3" pick fixed_docker=""
+  local -a options
+  [[ "$(_clx_ws docker "$file" "$name")" == 1 ]] && { fixed_docker=1; ws_docker=1; chrome=0; }
   while :; do
     print -ru2 -- ""
     command node "$_CLX_SOURCE_DIR/scripts/workspace.mjs" summary "$file" "$name" >&2 || return 1
-    if [[ "$chrome" == 1 ]]; then
+    options=("Start")
+    if [[ -n "$fixed_docker" ]]; then
+      print -ru2 -- "  Docker    on (set in the workspace, experimental)"
+    elif [[ -n "$ws_docker" ]]; then
+      print -ru2 -- "  Docker    on for this launch (experimental)"
+      options+=("Run without Docker")
+    else
+      print -ru2 -- "  Docker    off"
+      options+=("Run in Docker for this launch (experimental)")
+    fi
+    # The browser lives outside the container, so Docker and Chrome don't mix.
+    if [[ -n "$ws_docker" ]]; then
+      print -ru2 -- "  Chrome    off (not available in Docker)"
+    elif [[ "$chrome" == 1 ]]; then
       print -ru2 -- "  Chrome    ON for this launch: your signed-in browser reaches beyond the workspace"
-      toggle="Turn Chrome off"
+      options+=("Turn Chrome off")
     else
       print -ru2 -- "  Chrome    off"
-      toggle="Turn Chrome on for this launch"
+      options+=("Turn Chrome on for this launch")
     fi
-    pick=$(print -rl -- "Start" "$toggle" "Edit workspace" "Back" | gum choose --header "Workspace '$name':") || return 1
+    options+=("Edit workspace" "Back")
+    pick=$(print -rl -- "${options[@]}" | gum choose --header "Workspace '$name':") || return 1
     case "$pick" in
       Start) return 0 ;;
+      "Run in Docker"*) ws_docker=1; chrome=0 ;;
+      "Run without Docker") ws_docker="" ;;
       "Turn Chrome on"*) chrome=1 ;;
       "Turn Chrome off") chrome=0 ;;
-      "Edit workspace") _clx_workspace_edit "$file" "$name" "$(_clx_ws get "$file" "$name")" "$catalog" ;;
-      Back) return 2 ;;
+      "Edit workspace")
+        _clx_workspace_edit "$file" "$name" "$(_clx_ws get "$file" "$name")" "$catalog"
+        [[ "$(_clx_ws docker "$file" "$name")" == 1 ]] && { fixed_docker=1; ws_docker=1; chrome=0; } || fixed_docker="" ;;
+      Back) ws_docker=""; return 2 ;;
     esac
   done
 }
@@ -530,7 +550,7 @@ clx() {
   fi
 
   # Workspace: `-w NAME` / `--workspace NAME` scopes the session to a few folders.
-  local workspaces_file="${CLX_WORKSPACES:-$clx_dir/workspaces.json}" workspace="" ws_start="" chrome=""
+  local workspaces_file="${CLX_WORKSPACES:-$clx_dir/workspaces.json}" workspace="" ws_start="" chrome="" ws_docker=""
   local -a rest_args
   while (( $# )); do
     case "$1" in
@@ -540,10 +560,15 @@ clx() {
       --workspace=*) workspace="${1#--workspace=}"; shift ;;
       --chrome) chrome=1; shift ;;
       --no-chrome) chrome=0; shift ;;
+      --docker) ws_docker=1; shift ;;
       *) rest_args+=("$1"); shift ;;
     esac
   done
   set -- "${rest_args[@]}"
+  if [[ -n "$ws_docker" && -z "$workspace" ]]; then
+    print -ru2 -- "clx: --docker needs a workspace (-w NAME): it decides which folders go in the container."
+    return 1
+  fi
   if [[ "$1" == "workspaces" ]]; then
     _clx_workspaces_manage "$workspaces_file" "$catalog"
     return $?
@@ -850,7 +875,13 @@ clx() {
     local -a ws_folders
     # Chrome is off in workspaces unless this launch passes --chrome.
     [[ -z "$chrome" ]] && chrome=0
-    ws_folders=("${(@f)$(CLX_WORKSPACE_CHROME=$chrome command node "$_CLX_SOURCE_DIR/scripts/workspace.mjs" apply "$workspaces_file" "$workspace" "$settings_file" "$mcp_file" "$synth_root" "$prompt_file")}") || return 1
+    # A workspace with "docker": true always runs in a container; --docker per launch.
+    [[ "$(command node "$_CLX_SOURCE_DIR/scripts/workspace.mjs" docker "$workspaces_file" "$workspace")" == 1 ]] && ws_docker=1
+    if [[ -n "$ws_docker" && "$chrome" == 1 ]]; then
+      print -ru2 -- "clx: --chrome doesn't work in a docker workspace: the browser lives outside the container."
+      return 1
+    fi
+    ws_folders=("${(@f)$(CLX_WORKSPACE_DOCKER=$ws_docker CLX_WORKSPACE_CHROME=$chrome command node "$_CLX_SOURCE_DIR/scripts/workspace.mjs" apply "$workspaces_file" "$workspace" "$settings_file" "$mcp_file" "$synth_root" "$prompt_file")}") || return 1
     ws_folders=("${(@)ws_folders:#}")
     ws_start="${ws_folders[1]}"
     # The session can't reach GitHub, so refresh branches and commits now, as you.
@@ -892,7 +923,11 @@ clx() {
       # claude.ai connectors (Drive, Gmail, …) also run outside the sandbox.
       export ENABLE_CLAUDEAI_MCP_SERVERS=false
     fi
-    "${CLX_CLAUDE_BIN:-claude}" --model "$model_id" "${effort_args[@]}" "${prompt_args[@]}" "${ws_args[@]}" \
+    # A docker workspace runs the same command inside a container (scripts/docker-run.mjs).
+    local -a runner=("${CLX_CLAUDE_BIN:-claude}")
+    [[ -n "$ws_docker" ]] && runner=(command node "${CLX_DOCKER_RUN:-$_CLX_SOURCE_DIR/scripts/docker-run.mjs}" "$workspaces_file" "$workspace" \
+      "$settings_file" "$mcp_file" "$synth_root" "$prompt_file" --)
+    "${runner[@]}" --model "$model_id" "${effort_args[@]}" "${prompt_args[@]}" "${ws_args[@]}" \
       --strict-mcp-config --mcp-config "$mcp_file" \
       --settings "$settings_file" \
       "${plugin_dir_args[@]}"
