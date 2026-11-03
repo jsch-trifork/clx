@@ -194,3 +194,21 @@ assert_eq "pother_names" "$(_clx_preset_other_names "$FIX" "$PRE" web)" "swift-l
 assert_eq "selargs_two"   "$(_clx_selected_args a 'b c' | tr '\n' '|')" "--selected|a|--selected|b c|"
 assert_eq "selargs_skip"  "$(_clx_selected_args '' x | tr '\n' '|')"    "--selected|x|"
 assert_eq "selargs_empty" "$(_clx_selected_args)"                       ""
+
+# Task — _clx_current_skill_dir: a saved skill dir follows the plugin's current install
+() {
+  local cfg=$(mktemp -d) c
+  c="$cfg/plugins/cache/mkt/am"
+  mkdir -p "$c/1.0.0/skills/old-only" "$c/1.0.0/skills/plan" "$c/2.0.0/skills/plan" \
+    "$cfg/plugins/cache/mkt/ux/1.0.0/.claude/skills/ux" "$cfg/plugins/cache/mkt/ux/1.1.0/.claude/skills/ux"
+  jq -n --arg a "$c/2.0.0" --arg u "$cfg/plugins/cache/mkt/ux/1.1.0" \
+    '{version:2, plugins:{"am@mkt":[{installPath:$a}], "ux@mkt":[{installPath:$u}]}}' \
+    > "$cfg/plugins/installed_plugins.json"
+  local -x CLAUDE_CONFIG_DIR="$cfg"
+  assert_eq "current_newer"   "$(_clx_current_skill_dir am@mkt "$c/1.0.0/skills/plan")"     "$c/2.0.0/skills/plan"
+  assert_eq "current_gone"    "$(_clx_current_skill_dir am@mkt "$c/1.0.0/skills/old-only")" "$c/1.0.0/skills/old-only"
+  assert_eq "current_layout"  "$(_clx_current_skill_dir ux@mkt "$cfg/plugins/cache/mkt/ux/1.0.0/.claude/skills/ux")" \
+    "$cfg/plugins/cache/mkt/ux/1.1.0/.claude/skills/ux"
+  assert_eq "current_unknown" "$(_clx_current_skill_dir nope@mkt "/fix/am/skills/plan")"    "/fix/am/skills/plan"
+  rm -rf "$cfg"
+}

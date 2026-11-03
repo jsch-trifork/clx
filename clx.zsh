@@ -48,13 +48,28 @@ _clx_build_synth_plugin() {
   print -r -- "$pdir"
 }
 
+# The catalog saves skill dirs under the plugin version installed at bootstrap; map one
+# onto the version Claude Code has installed now. Keeps the saved dir if the skill is gone.
+_clx_current_skill_dir() {
+  local pid="$1" dir="$2" root parent rel
+  root=$(jq -r --arg k "$pid" '.plugins[$k][0].installPath // empty' \
+    "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/installed_plugins.json" 2>/dev/null)
+  root=${root%/}; parent=${root:h}
+  if [[ -n "$root" && "$dir" == "$parent"/*/* ]]; then
+    rel=${dir#$parent/}; rel=${rel#*/}
+    [[ -d "$root/$rel" ]] && { print -r -- "$root/$rel"; return }
+  fi
+  print -r -- "$dir"
+}
+
 _clx_skill_dirs_for_labels() {
   local catalog="$1" pid="$2"; shift 2
-  local l
+  local l d
   for l in "$@"; do
     [[ -z "$l" ]] && continue
     jq -r --arg p "$pid" --arg l "$l" \
-      '.skillPlugins[] | select(.id==$p) | .skills[] | select(.label==$l) | .dir' "$catalog"
+      '.skillPlugins[] | select(.id==$p) | .skills[] | select(.label==$l) | .dir' "$catalog" |
+      while IFS= read -r d; do _clx_current_skill_dir "$pid" "$d"; done
   done
 }
 
@@ -128,11 +143,12 @@ _clx_prompt_display() {
 }
 
 _clx_preset_subset_dirs() {
-  local catalog="$1" file="$2" name="$3" pid="$4" base
+  local catalog="$1" file="$2" name="$3" pid="$4" base d
   jq -r --arg n "$name" --arg p "$pid" '.[$n].skillPlugins[$p].skills // [] | .[]' "$file" | while IFS= read -r base; do
     [[ -z "$base" ]] && continue
     jq -r --arg p "$pid" --arg b "$base" \
-      '.skillPlugins[] | select(.id==$p) | .skills[] | select((.dir|split("/")|last)==$b) | .dir' "$catalog"
+      '.skillPlugins[] | select(.id==$p) | .skills[] | select((.dir|split("/")|last)==$b) | .dir' "$catalog" |
+      while IFS= read -r d; do _clx_current_skill_dir "$pid" "$d"; done
   done
 }
 _clx_preset_preselect_labels() {
